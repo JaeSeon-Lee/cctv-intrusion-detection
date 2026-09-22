@@ -44,4 +44,3 @@ dependencies:
       - pyparsing==3.3.3
       - python-dateutil==2.9.0.post0
       - six==1.17.0
-prefix: /home/user1/anaconda3/envs/cctv-ai
