@@ -12,6 +12,8 @@ class PersonDetector:
     def detect(self, frame: np.ndarray) -> np.ndarray:
         """프레임을 받아서 박스 좌표 배열(xyxy)을 반환"""
         results = self.model(frame, classes=self.classes, conf=self.conf, verbose=False)
+
+        print(results)
         return results[0].boxes.xyxy.cpu().numpy()
 
     def draw(self, frame: np.ndarray, boxes: np.ndarray, color=(0, 0, 255), thickness: int = 2) -> np.ndarray:
