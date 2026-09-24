@@ -5,6 +5,10 @@ class VideoRender:
         self.path = path
         self.capture = cv2.VideoCapture(path)
 
+    def is_opened(self):
+        # 파일이 없거나 코덱을 못 읽으면 False
+        return self.capture.isOpened()
+
     def read(self):
         return self.capture.read()
 
@@ -17,7 +21,9 @@ class VideoRender:
     def get_fps(self):
         return self.capture.get(cv2.CAP_PROP_FPS)
 
+    def get_frame_count(self):
+        # 전체 프레임 수 (실시간 스트림은 0 또는 음수가 나올 수 있음)
+        return int(self.capture.get(cv2.CAP_PROP_FRAME_COUNT))
+
     def release(self):
         self.capture.release()
-
-    

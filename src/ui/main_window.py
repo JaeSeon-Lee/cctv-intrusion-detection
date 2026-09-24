@@ -24,3 +24,8 @@ class MainWindow(QMainWindow):
         )
 
         self.setCentralWidget(splitter)
+
+    def closeEvent(self, event):
+        # 창을 닫을 때 열려 있는 영상 자원 정리
+        self.video_widget.close_video()
+        super().closeEvent(event)
