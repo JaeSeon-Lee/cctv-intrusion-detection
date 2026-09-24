@@ -3,6 +3,7 @@ import cv2
 # 스트림 연결/읽기 대기 시간 (ms). 너무 길면 연결 실패 시 화면이 오래 멈춘다.
 STREAM_TIMEOUT_MS = 5000
 
+
 class VideoRender:
     def __init__(self, path):
         # path: 파일 경로, 스트림 URL(rtsp://...), 또는 웹캠 번호(int)
@@ -10,10 +11,16 @@ class VideoRender:
 
         if isinstance(path, str) and "://" in path:
             # 네트워크 스트림은 타임아웃을 지정해서 연다
-            self.capture = cv2.VideoCapture(path, cv2.CAP_FFMPEG, [
-                cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, STREAM_TIMEOUT_MS,
-                cv2.CAP_PROP_READ_TIMEOUT_MSEC, STREAM_TIMEOUT_MS,
-            ])
+            self.capture = cv2.VideoCapture(
+                path,
+                cv2.CAP_FFMPEG,
+                [
+                    cv2.CAP_PROP_OPEN_TIMEOUT_MSEC,
+                    STREAM_TIMEOUT_MS,
+                    cv2.CAP_PROP_READ_TIMEOUT_MSEC,
+                    STREAM_TIMEOUT_MS,
+                ],
+            )
         else:
             self.capture = cv2.VideoCapture(path)
 

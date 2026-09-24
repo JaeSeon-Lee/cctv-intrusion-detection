@@ -2,6 +2,13 @@
 __pycache__/
 *.py[cod]
 *.pyo
+*.egg-info/
+build/
+dist/
+
+# Tools
+.ruff_cache/
+.pytest_cache/
 
 # Virtual environment
 .venv/
@@ -17,12 +24,9 @@ venv/
 # Jupyter
 .ipynb_checkpoints/
 
-# Data
-data/raw/
-data/processed/
-
-# Outputs
-outputs/
+# Data: 침입 클립(생성물)은 커밋하지 않고 폴더만 유지
+data/output/*
+!data/output/.gitkeep
 
 # OS
 .DS_Store

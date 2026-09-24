@@ -1,5 +1,6 @@
-from PySide6.QtWidgets import QWidget, QPushButton, QHBoxLayout
 from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QHBoxLayout, QPushButton, QWidget
+
 
 class ToolBar(QWidget):
     """창 상단 버튼 모음 (스트림 연결)

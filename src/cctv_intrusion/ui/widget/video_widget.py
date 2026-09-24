@@ -1,14 +1,25 @@
-from PySide6.QtWidgets import QApplication, QWidget, QLabel, QVBoxLayout, QSizePolicy, QMessageBox
-from PySide6.QtCore import Qt, QTimer, Signal, QPointF
-from PySide6.QtGui import QImage, QPixmap, QKeySequence, QShortcut, QPainter, QPen, QColor, QPolygonF
-from video import VideoRender
-from ui.styles import colors, load_qss
-from ui.widget.control_bar import ControlBar
+from PySide6.QtCore import QPointF, Qt, QTimer, Signal
+from PySide6.QtGui import (
+    QColor,
+    QImage,
+    QKeySequence,
+    QPainter,
+    QPen,
+    QPixmap,
+    QPolygonF,
+    QShortcut,
+)
+from PySide6.QtWidgets import QApplication, QLabel, QMessageBox, QSizePolicy, QVBoxLayout, QWidget
+
+from cctv_intrusion.ui.styles import colors, load_qss
+from cctv_intrusion.ui.widget.control_bar import ControlBar
+from cctv_intrusion.video import VideoRender
 
 # FPS 정보를 못 읽었을 때 사용할 기본값
 DEFAULT_FPS = 30
 # [◀ 5초] / [5초 ▶] 버튼, ← / → 키로 이동하는 시간 (초)
 SEEK_SECONDS = 5
+
 
 class VideoLabel(QLabel):
     """영상을 표시하는 QLabel. 마우스 클릭 위치를 clicked 신호로 알려준다.
@@ -24,6 +35,7 @@ class VideoLabel(QLabel):
         pos = event.position()
         self.clicked.emit(pos.x(), pos.y(), event.button())
 
+
 class VideoWidget(QWidget):
     # Signal: "이런 일이 일어났다"고 알리는 신호. 다른 객체가 .connect(함수)로 연결해두면
     # .emit(...) 할 때마다 연결된 함수가 호출된다. (FileTree.file_selected와 같은 방식)
@@ -38,21 +50,21 @@ class VideoWidget(QWidget):
     def __init__(self):
         super().__init__()
 
-        self.render = None          # 현재 열린 VideoRender (없으면 None)
+        self.render = None  # 현재 열린 VideoRender (없으면 None)
         self.fps = DEFAULT_FPS
-        self.frame_count = 0        # 전체 프레임 수 (파일일 때만 의미 있음)
-        self.frame_index = -1       # 현재 화면에 표시 중인 프레임 번호
-        self.is_stream = False      # 실시간 스트림이면 True (탐색 불가)
-        self.at_end = False         # 영상 끝까지 재생했는지
+        self.frame_count = 0  # 전체 프레임 수 (파일일 때만 의미 있음)
+        self.frame_index = -1  # 현재 화면에 표시 중인 프레임 번호
+        self.is_stream = False  # 실시간 스트림이면 True (탐색 불가)
+        self.at_end = False  # 영상 끝까지 재생했는지
         self.controls_enabled = True  # False면 재생 컨트롤 전체 비활성화 (위험지역 편집 모드 등)
-        self.was_playing = False    # 슬라이더를 잡기 전에 재생 중이었는지
+        self.was_playing = False  # 슬라이더를 잡기 전에 재생 중이었는지
         self.current_pixmap = None  # 원본 크기 이미지 (창 크기가 바뀔 때 다시 축소하기 위해 보관)
 
         # 위험구역 표시용
-        self.zones = []             # [{"name": "구역 1", "points": [(x, y), ...]}, ...] (원본 프레임 좌표)
-        self.selected_zone = -1     # 리스트에서 선택한 구역 번호 (없으면 -1)
-        self.drawing = False        # True면 영상 클릭으로 꼭짓점을 찍는 중 (위험지역 편집 모드)
-        self.drawing_points = []    # 편집 중에 찍은 꼭짓점들 (원본 프레임 좌표)
+        self.zones = []  # [{"name": "구역 1", "points": [(x, y), ...]}, ...] (원본 프레임 좌표)
+        self.selected_zone = -1  # 리스트에서 선택한 구역 번호 (없으면 -1)
+        self.drawing = False  # True면 영상 클릭으로 꼭짓점을 찍는 중 (위험지역 편집 모드)
+        self.drawing_points = []  # 편집 중에 찍은 꼭짓점들 (원본 프레임 좌표)
         # 화면에 그린 이미지의 배율과 위치. 클릭 위치 → 원본 프레임 좌표 변환에 사용
         self.view_scale = 1.0
         self.view_offset_x = 0.0
@@ -285,7 +297,9 @@ class VideoWidget(QWidget):
 
         # numpy 배열 → QImage. Format_BGR888을 쓰면 BGR→RGB 변환 없이 바로 만들 수 있다.
         # .copy()로 복사해두지 않으면 frame 메모리가 사라졌을 때 이미지가 깨질 수 있다.
-        image = QImage(frame.data, width, height, bytes_per_line, QImage.Format.Format_BGR888).copy()
+        image = QImage(
+            frame.data, width, height, bytes_per_line, QImage.Format.Format_BGR888
+        ).copy()
 
         self.current_pixmap = QPixmap.fromImage(image)
         self.update_label()
@@ -362,7 +376,10 @@ class VideoWidget(QWidget):
         frame_x = (x - self.view_offset_x) / self.view_scale
         frame_y = (y - self.view_offset_y) / self.view_scale
         # 영상 바깥(위아래/좌우 검은 여백)을 클릭하면 무시
-        if not (0 <= frame_x < self.current_pixmap.width() and 0 <= frame_y < self.current_pixmap.height()):
+        if not (
+            0 <= frame_x < self.current_pixmap.width()
+            and 0 <= frame_y < self.current_pixmap.height()
+        ):
             return
 
         self.drawing_points.append((int(frame_x), int(frame_y)))

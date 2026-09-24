@@ -1,6 +1,8 @@
-from PySide6.QtWidgets import QWidget, QPushButton, QSlider, QLabel, QHBoxLayout
 from PySide6.QtCore import Qt
-from ui.styles import load_qss
+from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QSlider, QWidget
+
+from cctv_intrusion.ui.styles import load_qss
+
 
 class ControlBar(QWidget):
     """재생 컨트롤 (5초 뒤로 / 재생·일시정지 / 5초 앞으로 / 탐색 슬라이더 / 시간)
@@ -46,6 +48,7 @@ class ControlBar(QWidget):
     def set_live_time(self, elapsed_sec):
         # 실시간 스트림은 전체 길이가 없으므로 경과 시간만 표시
         self.time_label.setText(f"LIVE  {format_time(elapsed_sec)}")
+
 
 def format_time(seconds):
     # 초 → "mm:ss" (1시간 이상이면 "h:mm:ss")

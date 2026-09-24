@@ -1,9 +1,18 @@
-from PySide6.QtWidgets import QMainWindow, QSplitter, QWidget, QVBoxLayout, QInputDialog, QMessageBox
 from PySide6.QtCore import Qt, Signal
-from ui.widget.file_tree import FileTree
-from ui.widget.video_widget import VideoWidget
-from ui.widget.tool_bar import ToolBar
-from ui.widget.zone_panel import ZonePanel
+from PySide6.QtWidgets import (
+    QInputDialog,
+    QMainWindow,
+    QMessageBox,
+    QSplitter,
+    QVBoxLayout,
+    QWidget,
+)
+
+from cctv_intrusion.ui.widget.file_tree import FileTree
+from cctv_intrusion.ui.widget.tool_bar import ToolBar
+from cctv_intrusion.ui.widget.video_widget import VideoWidget
+from cctv_intrusion.ui.widget.zone_panel import ZonePanel
+
 
 class MainWindow(QMainWindow):
     """메인 창
@@ -41,9 +50,7 @@ class MainWindow(QMainWindow):
         splitter.addWidget(self.zone_panel)
         splitter.setSizes([280, 860, 260])
 
-        self.file_tree.file_selected.connect(
-            self.video_widget.set_video
-        )
+        self.file_tree.file_selected.connect(self.video_widget.set_video)
         self.tool_bar.stream_button.clicked.connect(self.on_stream_clicked)
         self.zone_panel.zone_button.clicked.connect(self.start_zone_edit)
         self.zone_panel.apply_button.clicked.connect(self.apply_zone_edit)
@@ -83,9 +90,11 @@ class MainWindow(QMainWindow):
         if text.isdigit():
             source = int(text)  # 웹캠 번호 (0, 1, ...)
         elif "://" in text:
-            source = text       # rtsp://, http:// 등 URL
+            source = text  # rtsp://, http:// 등 URL
         else:
-            QMessageBox.warning(self, "입력 오류", "RTSP URL(rtsp://...) 또는 웹캠 번호(0, 1 ...)를 입력하세요.")
+            QMessageBox.warning(
+                self, "입력 오류", "RTSP URL(rtsp://...) 또는 웹캠 번호(0, 1 ...)를 입력하세요."
+            )
             return
 
         if self.video_widget.open_source(source, is_stream=True):
@@ -106,7 +115,9 @@ class MainWindow(QMainWindow):
     def apply_zone_edit(self):
         # 다각형은 꼭짓점이 3개 이상 있어야 하므로, 부족하면 편집 모드를 유지한다
         if len(self.video_widget.drawing_points) < 3:
-            QMessageBox.warning(self, "위험지역 설정", "영상을 클릭해 꼭짓점을 3개 이상 찍어주세요.")
+            QMessageBox.warning(
+                self, "위험지역 설정", "영상을 클릭해 꼭짓점을 3개 이상 찍어주세요."
+            )
             return
 
         points = self.video_widget.finish_drawing()

@@ -1,7 +1,9 @@
-from PySide6.QtWidgets import QWidget, QPushButton, QLabel, QListWidget, QVBoxLayout, QHBoxLayout
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QKeySequence, QShortcut
-from ui.styles import load_qss
+from PySide6.QtWidgets import QHBoxLayout, QLabel, QListWidget, QPushButton, QVBoxLayout, QWidget
+
+from cctv_intrusion.ui.styles import load_qss
+
 
 class ZonePanel(QWidget):
     """화면 우측 위험구역 패널 ([위험지역 설정] / [완료] / [취소] 버튼 + 위험구역 리스트)
@@ -26,7 +28,9 @@ class ZonePanel(QWidget):
         self.zone_button = QPushButton("위험지역 설정")
         self.apply_button = QPushButton("완료")
         self.cancel_button = QPushButton("취소")
-        self.edit_label = QLabel("영상을 클릭해 꼭짓점을 3개 이상 찍고 [완료]를 누르세요.\n우클릭: 마지막 점 취소")
+        self.edit_label = QLabel(
+            "영상을 클릭해 꼭짓점을 3개 이상 찍고 [완료]를 누르세요.\n우클릭: 마지막 점 취소"
+        )
         self.edit_label.setWordWrap(True)  # 패널 폭이 좁으므로 자동 줄바꿈
 
         title = QLabel("위험구역 목록")
