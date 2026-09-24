@@ -1,4 +1,4 @@
-from PySide6.QtWidgets import QWidget, QLabel, QVBoxLayout, QSizePolicy, QMessageBox
+from PySide6.QtWidgets import QApplication, QWidget, QLabel, QVBoxLayout, QSizePolicy, QMessageBox
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QImage, QPixmap, QKeySequence, QShortcut
 from video import VideoRender
@@ -74,16 +74,26 @@ class VideoWidget(QWidget):
         self.open_source(path)
 
     def open_source(self, source, is_stream=False):
-        # 기존 영상이 있으면 먼저 정리
-        self.close_video()
+        # source: 파일 경로, 스트림 URL, 또는 웹캠 번호(int)
 
-        render = VideoRender(source)
+        # 스트림 연결은 몇 초 걸릴 수 있으므로 그동안 마우스 커서를 모래시계로 표시
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            render = VideoRender(source)
+        finally:
+            QApplication.restoreOverrideCursor()
+
+        # 열기에 실패하면 지금 보고 있던 영상은 그대로 둔다
         if not render.is_opened():
             render.release()
-            self.label.setText("동영상을 선택하세요.")
-            QMessageBox.critical(self, "열기 실패", f"영상을 열 수 없습니다.\n{source}")
+            if is_stream:
+                QMessageBox.critical(self, "연결 실패", f"스트림에 연결할 수 없습니다.\n{source}")
+            else:
+                QMessageBox.critical(self, "열기 실패", f"영상을 열 수 없습니다.\n{source}")
             return False
 
+        # 새 영상이 열린 게 확인되면 기존 영상 정리 후 교체
+        self.close_video()
         self.render = render
         self.is_stream = is_stream
         self.fps = render.get_fps()
@@ -159,6 +169,8 @@ class VideoWidget(QWidget):
             # 영상 끝 (또는 읽기 실패) → 재생 멈춤
             self.at_end = True
             self.pause()
+            if self.is_stream:
+                QMessageBox.warning(self, "스트림 끊김", "스트림에서 영상을 받을 수 없습니다.")
             return
 
         self.frame_index += 1
