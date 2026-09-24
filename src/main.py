@@ -1,48 +1,19 @@
-from video import VideoRender
-import cv2
+# 파이썬이 기본으로 제공하는 모듈은 import로 불러오기
+import sys
+
+# PySide6.QtWidgets 모듈에서 QApplication 클래스 불러오기
+from PySide6.QtWidgets import QApplication
+from PySide6.QtGui import QFont
+from ui import MainWindow
 
 def main():
-    reader = VideoRender("./data/input/test_trespass.mp4")
+    app = QApplication(sys.argv)
+    app.setFont(QFont("Noto Sans CJK KR", 10))
 
-    fps = reader.get_fps()
-    skip_frame = int(fps * 5)
-    playing = True
+    window = MainWindow()
+    window.show()
 
-    while True:
-
-        if playing:
-            ret, frame = reader.read()
-
-            if not ret:
-                break
-
-            display_frame = cv2.resize(
-                frame, 
-                None, 
-                fx=0.333, 
-                fy=0.333
-            )
-
-            cv2.imshow("Frame", display_frame)
-
-        key = cv2.waitKey(30) & 0xFF
-
-        if key == ord(" "): # 스페이스바
-            playing = not playing
-
-        elif key == 81: # 방향키 왼쪽
-            current = reader.get_current_frame()
-            reader.seek_frame(max(0, current - skip_frame))
-
-        elif key == 83: # 방향키 오른쪽
-            current = reader.get_current_frame()
-            reader.seek_frame(current + skip_frame)
-
-        elif key == ord("q"): # q 키
-            break
-
-    reader.release()
-    cv2.destroyAllWindows()
+    sys.exit(app.exec())
 
 if __name__ == "__main__":
     main()
