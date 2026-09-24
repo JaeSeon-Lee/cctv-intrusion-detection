@@ -29,7 +29,7 @@ class ZonePanel(QWidget):
         self.apply_button = QPushButton("완료")
         self.cancel_button = QPushButton("취소")
         self.edit_label = QLabel(
-            "영상을 클릭해 꼭짓점을 3개 이상 찍고 [완료]를 누르세요.\n우클릭: 마지막 점 취소"
+            "영상을 클릭해 꼭짓점을 3개 이상 찍고 [완료]를 누르세요.\n꼭짓점 드래그: 위치 수정\n우클릭: 마지막 점 취소"
         )
         self.edit_label.setWordWrap(True)  # 패널 폭이 좁으므로 자동 줄바꿈
 

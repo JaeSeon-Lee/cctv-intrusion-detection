@@ -1,8 +1,11 @@
-from PySide6.QtCore import QPointF, Qt, QTimer, Signal
+from typing import override
+
+from PySide6.QtCore import QPointF, Qt, QTimer, Signal, Slot
 from PySide6.QtGui import (
     QColor,
     QImage,
     QKeySequence,
+    QMouseEvent,
     QPainter,
     QPen,
     QPixmap,
@@ -19,21 +22,41 @@ from cctv_intrusion.video import VideoRender
 DEFAULT_FPS = 30
 # [◀ 5초] / [5초 ▶] 버튼, ← / → 키로 이동하는 시간 (초)
 SEEK_SECONDS = 5
+# 편집 중 꼭짓점을 그리는 점의 반지름 (화면 픽셀)
+POINT_RADIUS = 5
+# 꼭짓점에서 이 거리(화면 픽셀) 안을 누르면 그 점을 잡은 것으로 본다 (점보다 조금 넓게 잡아야 잡기 쉬움)
+POINT_HIT_RADIUS = 10
 
 
 class VideoLabel(QLabel):
-    """영상을 표시하는 QLabel. 마우스 클릭 위치를 clicked 신호로 알려준다.
+    """영상을 표시하는 QLabel. 마우스 누름 / 이동 / 뗌을 신호로 알려준다.
 
-    QLabel은 원래 클릭 신호가 없어서, mousePressEvent(마우스를 누르면 Qt가 자동으로
-    호출하는 함수)를 덮어써서(override) 직접 신호를 보낸다.
+    QLabel은 원래 마우스 신호가 없어서, mousePressEvent 등(마우스 동작 시 Qt가 자동으로
+    호출하는 함수)을 덮어써서(override) 직접 신호를 보낸다. 위치는 모두 라벨 기준 좌표.
+
+    Signals:
+      mouse_pressed(x, y, button) : 마우스 버튼을 눌렀을 때 (button: Qt.MouseButton)
+      mouse_moved(x, y)           : 마우스를 움직일 때 (setMouseTracking(True)면 버튼을 안 눌러도 발생)
+      mouse_released()            : 마우스 버튼을 뗐을 때
     """
 
-    # (클릭 위치 x, y, 눌린 버튼) — 위치는 라벨 기준 좌표
-    clicked = Signal(float, float, object)
+    mouse_pressed = Signal(float, float, object)  # object: Qt.MouseButton
+    mouse_moved = Signal(float, float)
+    mouse_released = Signal()
 
-    def mousePressEvent(self, event):
+    @override
+    def mousePressEvent(self, event: QMouseEvent) -> None:
         pos = event.position()
-        self.clicked.emit(pos.x(), pos.y(), event.button())
+        self.mouse_pressed.emit(pos.x(), pos.y(), event.button())
+
+    @override
+    def mouseMoveEvent(self, event: QMouseEvent) -> None:
+        pos = event.position()
+        self.mouse_moved.emit(pos.x(), pos.y())
+
+    @override
+    def mouseReleaseEvent(self, event: QMouseEvent) -> None:
+        self.mouse_released.emit()
 
 
 class VideoWidget(QWidget):
@@ -65,6 +88,7 @@ class VideoWidget(QWidget):
         self.selected_zone = -1  # 리스트에서 선택한 구역 번호 (없으면 -1)
         self.drawing = False  # True면 영상 클릭으로 꼭짓점을 찍는 중 (위험지역 편집 모드)
         self.drawing_points = []  # 편집 중에 찍은 꼭짓점들 (원본 프레임 좌표)
+        self.dragging_point = -1  # 드래그로 옮기는 중인 꼭짓점 번호 (없으면 -1)
         # 화면에 그린 이미지의 배율과 위치. 클릭 위치 → 원본 프레임 좌표 변환에 사용
         self.view_scale = 1.0
         self.view_offset_x = 0.0
@@ -83,7 +107,9 @@ class VideoWidget(QWidget):
         self.controls.play_button.clicked.connect(self.toggle_play)
         self.controls.prev_button.clicked.connect(self.seek_backward)
         self.controls.next_button.clicked.connect(self.seek_forward)
-        self.label.clicked.connect(self.on_label_clicked)
+        self.label.mouse_pressed.connect(self.on_label_pressed)
+        self.label.mouse_moved.connect(self.on_label_moved)
+        self.label.mouse_released.connect(self.on_label_released)
 
         # 슬라이더를 잡고 있는 동안은 재생을 멈추고, 놓으면 원래 상태로 되돌린다.
         self.controls.slider.sliderPressed.connect(self.on_slider_pressed)
@@ -345,26 +371,34 @@ class VideoWidget(QWidget):
         self.selected_zone = selected_index
         self.update_label()
 
-    def start_drawing(self):
+    def start_drawing(self) -> None:
         self.drawing = True
         self.drawing_points = []
+        self.dragging_point = -1
+        # 마우스 트래킹: 버튼을 누르지 않고 움직여도 mouseMoveEvent가 오게 한다 (꼭짓점 위 커서 변경용)
+        self.label.setMouseTracking(True)
+        self.label.setCursor(Qt.CursorShape.CrossCursor)
         self.update_label()
 
-    def finish_drawing(self):
+    def finish_drawing(self) -> list[tuple[int, int]]:
         # 편집 종료. 찍은 꼭짓점 목록을 돌려준다.
         points = self.drawing_points
         self.drawing = False
         self.drawing_points = []
+        self.dragging_point = -1
+        self.label.setMouseTracking(False)
+        self.label.unsetCursor()
         self.update_label()
         return points
 
-    def on_label_clicked(self, x, y, button):
+    @Slot(float, float, object)
+    def on_label_pressed(self, x: float, y: float, button: Qt.MouseButton) -> None:
         if not self.drawing or self.current_pixmap is None:
             return
 
         if button == Qt.MouseButton.RightButton:
-            # 우클릭: 마지막으로 찍은 점 취소
-            if self.drawing_points:
+            # 우클릭: 마지막으로 찍은 점 취소 (드래그 중에는 무시)
+            if self.drawing_points and self.dragging_point < 0:
                 self.drawing_points.pop()
                 self.update_label()
             return
@@ -372,9 +406,14 @@ class VideoWidget(QWidget):
         if button != Qt.MouseButton.LeftButton:
             return
 
-        # 화면(라벨) 좌표 → 원본 프레임 좌표
-        frame_x = (x - self.view_offset_x) / self.view_scale
-        frame_y = (y - self.view_offset_y) / self.view_scale
+        # 이미 찍은 꼭짓점을 눌렀으면 새 점을 찍지 않고 그 점을 잡는다 (드래그로 이동)
+        hit = self.find_point_at(x, y)
+        if hit >= 0:
+            self.dragging_point = hit
+            self.label.setCursor(Qt.CursorShape.ClosedHandCursor)
+            return
+
+        frame_x, frame_y = self.to_frame_point(x, y)
         # 영상 바깥(위아래/좌우 검은 여백)을 클릭하면 무시
         if not (
             0 <= frame_x < self.current_pixmap.width()
@@ -384,6 +423,51 @@ class VideoWidget(QWidget):
 
         self.drawing_points.append((int(frame_x), int(frame_y)))
         self.update_label()
+
+    @Slot(float, float)
+    def on_label_moved(self, x: float, y: float) -> None:
+        if not self.drawing or self.current_pixmap is None:
+            return
+
+        if self.dragging_point < 0:
+            # 드래그 중이 아니면: 꼭짓점 위에서는 손 모양, 나머지는 십자 커서로 잡을 수 있는 점을 알려줌
+            if self.find_point_at(x, y) >= 0:
+                self.label.setCursor(Qt.CursorShape.OpenHandCursor)
+            else:
+                self.label.setCursor(Qt.CursorShape.CrossCursor)
+            return
+
+        # 잡은 꼭짓점을 마우스 위치로 이동. 영상 밖으로 끌고 나가도 영상 가장자리에 붙어 있게 한다.
+        frame_x, frame_y = self.to_frame_point(x, y)
+        frame_x = max(0, min(frame_x, self.current_pixmap.width() - 1))
+        frame_y = max(0, min(frame_y, self.current_pixmap.height() - 1))
+        self.drawing_points[self.dragging_point] = (int(frame_x), int(frame_y))
+        self.update_label()
+
+    @Slot()
+    def on_label_released(self) -> None:
+        if self.dragging_point < 0:
+            return
+        self.dragging_point = -1
+        self.label.setCursor(Qt.CursorShape.OpenHandCursor)  # 마우스는 아직 그 점 위에 있음
+
+    def to_frame_point(self, x: float, y: float) -> tuple[float, float]:
+        # 화면(라벨) 좌표 → 원본 프레임 좌표
+        return (x - self.view_offset_x) / self.view_scale, (
+            y - self.view_offset_y
+        ) / self.view_scale
+
+    def find_point_at(self, x: float, y: float) -> int:
+        # 화면 좌표 (x, y) 근처에 있는 꼭짓점 번호 (없으면 -1).
+        # 거리는 화면 픽셀로 재야 창 크기와 상관없이 잡히는 범위가 같다.
+        # 점이 겹쳐 있으면 나중에 찍은(위에 그려진) 점을 먼저 잡도록 뒤에서부터 찾는다.
+        for i in range(len(self.drawing_points) - 1, -1, -1):
+            px, py = self.drawing_points[i]
+            view_x = px * self.view_scale + self.view_offset_x
+            view_y = py * self.view_scale + self.view_offset_y
+            if (view_x - x) ** 2 + (view_y - y) ** 2 <= POINT_HIT_RADIUS**2:
+                return i
+        return -1
 
     def draw_zones(self, pixmap):
         # QPainter: QPixmap/위젯 위에 선, 도형, 글자를 그리는 도구. begin(대상) ~ end() 사이에서 그린다.
@@ -416,7 +500,7 @@ class VideoWidget(QWidget):
             painter.setPen(Qt.PenStyle.NoPen)
             painter.setBrush(colors.ZONE_DRAWING)
             for point in points:
-                painter.drawEllipse(point, 5, 5)
+                painter.drawEllipse(point, POINT_RADIUS, POINT_RADIUS)
 
         painter.end()
 
