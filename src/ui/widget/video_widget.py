@@ -1,5 +1,5 @@
 from PySide6.QtWidgets import QApplication, QWidget, QLabel, QVBoxLayout, QSizePolicy, QMessageBox
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtGui import QImage, QPixmap, QKeySequence, QShortcut
 from video import VideoRender
 from ui.widget.control_bar import ControlBar
@@ -8,6 +8,16 @@ from ui.widget.control_bar import ControlBar
 DEFAULT_FPS = 30
 
 class VideoWidget(QWidget):
+    # Signal: "이런 일이 일어났다"고 알리는 신호. 다른 객체가 .connect(함수)로 연결해두면
+    # .emit(...) 할 때마다 연결된 함수가 호출된다. (FileTree.file_selected와 같은 방식)
+    # 클래스 변수로 선언해야 동작한다.
+
+    # 영상/스트림을 열었을 때: 경로 또는 URL (웹캠은 "0", "1" 같은 문자열)
+    source_opened = Signal(str)
+    # 프레임을 하나 표시할 때마다: (BGR 원본 프레임 numpy 배열, 프레임 번호)
+    # numpy 배열은 Qt가 모르는 타입이라 object로 선언한다.
+    frame_ready = Signal(object, int)
+
     def __init__(self):
         super().__init__()
 
@@ -109,6 +119,9 @@ class VideoWidget(QWidget):
         self.controls.slider.blockSignals(False)
 
         self.update_control_state()
+
+        # 팀원 모듈이 초기화할 수 있도록 첫 frame_ready보다 먼저 알림
+        self.source_opened.emit(str(source))
 
         # 첫 프레임을 바로 보여주고 재생 시작
         self.next_frame()
@@ -213,12 +226,16 @@ class VideoWidget(QWidget):
     # 화면 표시
     # ------------------------------------------------------------
     def handle_frame(self, frame):
-        # 새 프레임을 읽을 때마다 호출: 화면 표시 + 슬라이더/시간 갱신
+        # 새 프레임을 읽을 때마다 호출: 화면 표시 + 슬라이더/시간 갱신 + 팀원 모듈에 전달
         self.show_frame(frame)
         self.update_position()
+        # 원본 프레임을 먼저 표시한 뒤 emit 하므로,
+        # 연결된 함수 안에서 show_frame(오버레이 그린 프레임)을 호출하면 그 화면으로 덮어써진다.
+        self.frame_ready.emit(frame, self.frame_index)
 
     def show_frame(self, frame):
         # OpenCV 프레임(BGR 순서 numpy 배열)을 QLabel에 표시
+        # 팀원 모듈이 바운딩 박스 등을 그린 프레임을 넘겨서 화면을 바꿀 때도 사용 가능
         height, width, channels = frame.shape
         bytes_per_line = channels * width
 
