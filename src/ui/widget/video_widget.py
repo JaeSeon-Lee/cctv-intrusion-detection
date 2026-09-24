@@ -1,11 +1,28 @@
 from PySide6.QtWidgets import QApplication, QWidget, QLabel, QVBoxLayout, QSizePolicy, QMessageBox
-from PySide6.QtCore import Qt, QTimer, Signal
-from PySide6.QtGui import QImage, QPixmap, QKeySequence, QShortcut
+from PySide6.QtCore import Qt, QTimer, Signal, QPointF
+from PySide6.QtGui import QImage, QPixmap, QKeySequence, QShortcut, QPainter, QPen, QColor, QPolygonF
 from video import VideoRender
+from ui.styles import colors, load_qss
 from ui.widget.control_bar import ControlBar
 
 # FPS 정보를 못 읽었을 때 사용할 기본값
 DEFAULT_FPS = 30
+# [◀ 5초] / [5초 ▶] 버튼, ← / → 키로 이동하는 시간 (초)
+SEEK_SECONDS = 5
+
+class VideoLabel(QLabel):
+    """영상을 표시하는 QLabel. 마우스 클릭 위치를 clicked 신호로 알려준다.
+
+    QLabel은 원래 클릭 신호가 없어서, mousePressEvent(마우스를 누르면 Qt가 자동으로
+    호출하는 함수)를 덮어써서(override) 직접 신호를 보낸다.
+    """
+
+    # (클릭 위치 x, y, 눌린 버튼) — 위치는 라벨 기준 좌표
+    clicked = Signal(float, float, object)
+
+    def mousePressEvent(self, event):
+        pos = event.position()
+        self.clicked.emit(pos.x(), pos.y(), event.button())
 
 class VideoWidget(QWidget):
     # Signal: "이런 일이 일어났다"고 알리는 신호. 다른 객체가 .connect(함수)로 연결해두면
@@ -31,25 +48,30 @@ class VideoWidget(QWidget):
         self.was_playing = False    # 슬라이더를 잡기 전에 재생 중이었는지
         self.current_pixmap = None  # 원본 크기 이미지 (창 크기가 바뀔 때 다시 축소하기 위해 보관)
 
-        self.label = QLabel("동영상을 선택하세요.")
+        # 위험구역 표시용
+        self.zones = []             # [{"name": "구역 1", "points": [(x, y), ...]}, ...] (원본 프레임 좌표)
+        self.selected_zone = -1     # 리스트에서 선택한 구역 번호 (없으면 -1)
+        self.drawing = False        # True면 영상 클릭으로 꼭짓점을 찍는 중 (위험지역 편집 모드)
+        self.drawing_points = []    # 편집 중에 찍은 꼭짓점들 (원본 프레임 좌표)
+        # 화면에 그린 이미지의 배율과 위치. 클릭 위치 → 원본 프레임 좌표 변환에 사용
+        self.view_scale = 1.0
+        self.view_offset_x = 0.0
+        self.view_offset_y = 0.0
+
+        self.label = VideoLabel("동영상을 선택하세요.")
         self.label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         # QLabel은 기본적으로 이미지 크기만큼 커지려고 해서 창이 늘어나 버린다.
         # Ignored로 두면 레이아웃이 정해준 크기를 그대로 따르므로 이미지를 자유롭게 줄일 수 있다.
         self.label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Ignored)
 
-        self.label.setStyleSheet("""
-            QLabel {
-                background-color: #000;
-                color: #fff;
-                font-size: 24px;
-            }
-        """)
+        self.label.setStyleSheet(load_qss("video_widget"))
 
         self.controls = ControlBar()
         self.controls.play_button.clicked.connect(self.toggle_play)
-        self.controls.prev_button.clicked.connect(self.prev_frame)
-        self.controls.next_button.clicked.connect(self.step_frame)
+        self.controls.prev_button.clicked.connect(self.seek_backward)
+        self.controls.next_button.clicked.connect(self.seek_forward)
+        self.label.clicked.connect(self.on_label_clicked)
 
         # 슬라이더를 잡고 있는 동안은 재생을 멈추고, 놓으면 원래 상태로 되돌린다.
         self.controls.slider.sliderPressed.connect(self.on_slider_pressed)
@@ -63,9 +85,14 @@ class VideoWidget(QWidget):
         self.timer.timeout.connect(self.next_frame)
 
         # QShortcut: 키보드 단축키. 창 안 어디에 포커스가 있어도 동작한다.
+        #   Space : 재생/일시정지
+        #   ← / → : 5초 뒤로 / 앞으로
+        #   , / . : 한 프레임 뒤로 / 앞으로 (일시정지 상태로)
         QShortcut(QKeySequence("Space"), self).activated.connect(self.on_space_key)
         QShortcut(QKeySequence("Left"), self).activated.connect(self.on_left_key)
         QShortcut(QKeySequence("Right"), self).activated.connect(self.on_right_key)
+        QShortcut(QKeySequence(","), self).activated.connect(self.on_comma_key)
+        QShortcut(QKeySequence("."), self).activated.connect(self.on_period_key)
 
         layout = QVBoxLayout()
         layout.setContentsMargins(0, 0, 0, 0)
@@ -190,18 +217,35 @@ class VideoWidget(QWidget):
         self.handle_frame(frame)
 
     def step_frame(self):
-        # [다음] 버튼: 멈춘 상태에서 한 프레임 앞으로
+        # [.] 키: 멈춘 상태에서 한 프레임 앞으로
         self.pause()
         self.next_frame()
 
     def prev_frame(self):
-        # [이전] 버튼: 멈춘 상태에서 한 프레임 뒤로
+        # [,] 키: 멈춘 상태에서 한 프레임 뒤로
         self.pause()
         if self.frame_index > 0:
             self.go_to_frame(self.frame_index - 1)
 
+    def seek_backward(self):
+        # [◀ 5초] 버튼, ← 키
+        self.seek_seconds(-SEEK_SECONDS)
+
+    def seek_forward(self):
+        # [5초 ▶] 버튼, → 키
+        self.seek_seconds(SEEK_SECONDS)
+
+    def seek_seconds(self, seconds):
+        # 현재 위치에서 seconds초 만큼 이동 (음수면 뒤로). 재생 중이면 이동한 위치부터 계속 재생된다.
+        if self.render is None or self.is_stream:
+            return
+        target = self.frame_index + round(seconds * self.fps)
+        # 영상 처음(0) ~ 마지막 프레임 사이로 제한
+        target = max(0, min(target, self.frame_count - 1))
+        self.go_to_frame(target)
+
     def go_to_frame(self, frame_number):
-        # 원하는 프레임 번호로 이동해서 표시 (슬라이더, 이전 버튼에서 사용)
+        # 원하는 프레임 번호로 이동해서 표시 (슬라이더, 5초 이동, 이전 프레임에서 사용)
         if self.render is None or self.is_stream:
             return
 
@@ -255,6 +299,14 @@ class VideoWidget(QWidget):
             Qt.AspectRatioMode.KeepAspectRatio,
             Qt.TransformationMode.SmoothTransformation,
         )
+
+        # 원본 → 화면 배율, 그리고 라벨 가운데 정렬로 생긴 여백(검은 띠)의 크기
+        self.view_scale = scaled.width() / self.current_pixmap.width()
+        self.view_offset_x = (self.label.width() - scaled.width()) / 2
+        self.view_offset_y = (self.label.height() - scaled.height()) / 2
+
+        # 위험구역은 축소된 화면 이미지 위에 그린다 (원본에 그리면 작은 창에서 선·글자가 뭉개짐)
+        self.draw_zones(scaled)
         self.label.setPixmap(scaled)
 
     def update_position(self):
@@ -269,6 +321,107 @@ class VideoWidget(QWidget):
         self.controls.slider.setValue(self.frame_index)
         self.controls.slider.blockSignals(False)
         self.controls.set_time(current_sec, self.frame_count / self.fps)
+
+    # ------------------------------------------------------------
+    # 위험구역 표시 / 편집 중 꼭짓점 찍기
+    # ------------------------------------------------------------
+    def set_zones(self, zones, selected_index):
+        # 위험구역 목록이나 선택이 바뀌었을 때 MainWindow가 호출. 일시정지 중이어도 바로 다시 그린다.
+        self.zones = zones
+        self.selected_zone = selected_index
+        self.update_label()
+
+    def start_drawing(self):
+        self.drawing = True
+        self.drawing_points = []
+        self.update_label()
+
+    def finish_drawing(self):
+        # 편집 종료. 찍은 꼭짓점 목록을 돌려준다.
+        points = self.drawing_points
+        self.drawing = False
+        self.drawing_points = []
+        self.update_label()
+        return points
+
+    def on_label_clicked(self, x, y, button):
+        if not self.drawing or self.current_pixmap is None:
+            return
+
+        if button == Qt.MouseButton.RightButton:
+            # 우클릭: 마지막으로 찍은 점 취소
+            if self.drawing_points:
+                self.drawing_points.pop()
+                self.update_label()
+            return
+
+        if button != Qt.MouseButton.LeftButton:
+            return
+
+        # 화면(라벨) 좌표 → 원본 프레임 좌표
+        frame_x = (x - self.view_offset_x) / self.view_scale
+        frame_y = (y - self.view_offset_y) / self.view_scale
+        # 영상 바깥(위아래/좌우 검은 여백)을 클릭하면 무시
+        if not (0 <= frame_x < self.current_pixmap.width() and 0 <= frame_y < self.current_pixmap.height()):
+            return
+
+        self.drawing_points.append((int(frame_x), int(frame_y)))
+        self.update_label()
+
+    def draw_zones(self, pixmap):
+        # QPainter: QPixmap/위젯 위에 선, 도형, 글자를 그리는 도구. begin(대상) ~ end() 사이에서 그린다.
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)  # 선을 부드럽게
+
+        for i, zone in enumerate(self.zones):
+            selected = i == self.selected_zone
+            color = colors.ZONE_SELECTED if selected else colors.ZONE
+            polygon = self.to_view_polygon(zone["points"])
+
+            # 선택된 구역은 선을 두껍게, 안쪽을 더 진하게 칠해서 눈에 띄게 한다
+            painter.setPen(QPen(color, 4 if selected else 2))
+            fill = QColor(color)
+            fill.setAlpha(110 if selected else 50)  # 투명도(0~255)
+            painter.setBrush(fill)
+            painter.drawPolygon(polygon)
+
+            self.draw_zone_name(painter, zone["name"], polygon, color)
+
+        if self.drawing and self.drawing_points:
+            # 편집 중인 꼭짓점: 점과 점 사이를 선으로 잇고, 마지막 점 → 첫 점은 점선으로 표시
+            points = self.to_view_polygon(self.drawing_points)
+            painter.setPen(QPen(colors.ZONE_DRAWING, 2))
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.drawPolyline(points)
+            if len(points) >= 3:
+                painter.setPen(QPen(colors.ZONE_DRAWING, 2, Qt.PenStyle.DashLine))
+                painter.drawLine(points[len(points) - 1], points[0])
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(colors.ZONE_DRAWING)
+            for point in points:
+                painter.drawEllipse(point, 5, 5)
+
+        painter.end()
+
+    def draw_zone_name(self, painter, name, polygon, color):
+        # 구역 이름을 색 배경 상자 안에 적어서 구역 가운데에 표시
+        font = painter.font()
+        font.setPixelSize(16)
+        font.setBold(True)
+        painter.setFont(font)
+
+        text_rect = painter.fontMetrics().boundingRect(name).adjusted(-6, -3, 6, 3)
+        text_rect.moveCenter(polygon.boundingRect().center().toPoint())
+
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(color)
+        painter.drawRect(text_rect)
+        painter.setPen(colors.ZONE_NAME_TEXT)
+        painter.drawText(text_rect, Qt.AlignmentFlag.AlignCenter, name)
+
+    def to_view_polygon(self, points):
+        # 원본 프레임 좌표 목록 → 축소된 화면 이미지 좌표의 QPolygonF
+        return QPolygonF([QPointF(x * self.view_scale, y * self.view_scale) for x, y in points])
 
     def resizeEvent(self, event):
         # 위젯 크기가 바뀔 때마다 Qt가 자동으로 호출하는 함수 (이벤트 핸들러)
@@ -303,8 +456,16 @@ class VideoWidget(QWidget):
 
     def on_left_key(self):
         if self.controls.prev_button.isEnabled():
-            self.prev_frame()
+            self.seek_backward()
 
     def on_right_key(self):
+        if self.controls.next_button.isEnabled():
+            self.seek_forward()
+
+    def on_comma_key(self):
+        if self.controls.prev_button.isEnabled():
+            self.prev_frame()
+
+    def on_period_key(self):
         if self.controls.next_button.isEnabled():
             self.step_frame()

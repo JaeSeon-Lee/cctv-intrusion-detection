@@ -1,8 +1,9 @@
 from PySide6.QtWidgets import QWidget, QPushButton, QSlider, QLabel, QHBoxLayout
 from PySide6.QtCore import Qt
+from ui.styles import load_qss
 
 class ControlBar(QWidget):
-    """재생 컨트롤 (이전 프레임 / 재생·일시정지 / 다음 프레임 / 탐색 슬라이더 / 시간)
+    """재생 컨트롤 (5초 뒤로 / 재생·일시정지 / 5초 앞으로 / 탐색 슬라이더 / 시간)
 
     버튼과 슬라이더는 화면만 담당하고,
     실제 동작은 VideoWidget에서 clicked, valueChanged 등의 신호에 연결해서 처리한다.
@@ -11,9 +12,9 @@ class ControlBar(QWidget):
     def __init__(self):
         super().__init__()
 
-        self.prev_button = QPushButton("◀ 이전")
+        self.prev_button = QPushButton("◀ 5초")
         self.play_button = QPushButton("재생")
-        self.next_button = QPushButton("다음 ▶")
+        self.next_button = QPushButton("5초 ▶")
 
         self.slider = QSlider(Qt.Orientation.Horizontal)
         self.slider.setRange(0, 0)
@@ -25,16 +26,7 @@ class ControlBar(QWidget):
         for widget in (self.prev_button, self.play_button, self.next_button, self.slider):
             widget.setFocusPolicy(Qt.FocusPolicy.NoFocus)
 
-        self.setStyleSheet("""
-            QPushButton {
-                font-size: 18px;
-                padding: 6px 16px;
-                min-width: 80px;
-            }
-            QLabel {
-                font-size: 18px;
-            }
-        """)
+        self.setStyleSheet(load_qss("control_bar"))
 
         layout = QHBoxLayout()
         layout.setContentsMargins(8, 8, 8, 8)

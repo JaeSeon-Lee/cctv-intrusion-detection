@@ -5,10 +5,13 @@ import sys
 from PySide6.QtWidgets import QApplication
 from PySide6.QtGui import QFont
 from ui import MainWindow
+from ui.styles import load_qss
 
 def main():
     app = QApplication(sys.argv)
     app.setFont(QFont("Noto Sans CJK KR", 10))
+    # 앱 전체 공통 스타일 (위젯별 스타일은 각 위젯에서 적용)
+    app.setStyleSheet(load_qss("app"))
 
     window = MainWindow()
     window.show()

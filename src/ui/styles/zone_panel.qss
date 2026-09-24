@@ -1,0 +1,36 @@
+/* 버튼 기본 스타일(font-size, padding)은 app.qss 참고 */
+QPushButton#apply {
+    background-color: #3a6ea5;
+    color: white;
+}
+
+QLabel#editLabel {
+    font-size: 16px;
+    color: #c0392b;
+}
+
+QLabel#title {
+    font-size: 18px;
+    font-weight: bold;
+}
+
+QLabel#hint {
+    font-size: 14px;
+    color: #666;
+}
+
+QListWidget {
+    background-color: #dfdfdf;
+    font-size: 20px;
+    color: #000;
+    border: none;
+}
+
+QListWidget::item {
+    padding: 10px 16px;
+}
+
+QListWidget::item:selected {
+    background-color: #f1c40f;
+    color: #000;
+}

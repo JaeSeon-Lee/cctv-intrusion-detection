@@ -1,0 +1,15 @@
+QTreeView {
+    background-color: #dfdfdf;
+    font-size: 24px;
+    color: #000;
+    border: none;
+}
+
+QTreeView::item {
+    padding: 12px 24px;
+}
+
+QTreeView::item:selected {
+    background-color: #3a6ea5;
+    color: white;
+}

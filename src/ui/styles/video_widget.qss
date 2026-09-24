@@ -1,0 +1,6 @@
+/* 영상 표시 라벨 (영상이 없을 때는 안내 문구 표시) */
+QLabel {
+    background-color: #000;
+    color: #fff;
+    font-size: 24px;
+}

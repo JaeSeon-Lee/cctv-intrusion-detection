@@ -5,6 +5,7 @@ from PySide6.QtWidgets import (
     QFileSystemModel,
 )
 from PySide6.QtCore import QDir, Signal
+from ui.styles import load_qss
 
 class FileTree(QWidget):
     file_selected = Signal(str)
@@ -42,21 +43,7 @@ class FileTree(QWidget):
         # output 폴더는 처음부터 펼쳐서 새 클립이 바로 보이게 함
         self.tree.expand(self.model.index(output_path))
 
-        self.tree.setStyleSheet("""
-            QTreeView {
-                background-color: #dfdfdf;
-                font-size: 24px;
-                color: #000;
-                border: none;
-            }
-            QTreeView::item {
-                padding: 12px 24px;
-            }
-            QTreeView::item:selected {
-                background-color: #3a6ea5;
-                color: white;
-            }
-        """)
+        self.tree.setStyleSheet(load_qss("file_tree"))
 
         layout = QVBoxLayout()
         layout.setContentsMargins(0, 0, 0, 0)

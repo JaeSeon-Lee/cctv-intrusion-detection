@@ -1,0 +1,8 @@
+/* 버튼 기본 스타일(font-size, padding)은 app.qss 참고 */
+QPushButton {
+    min-width: 80px;
+}
+
+QLabel {
+    font-size: 18px;
+}
