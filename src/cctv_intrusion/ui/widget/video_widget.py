@@ -12,7 +12,7 @@ from PySide6.QtGui import (
     QPolygonF,
     QShortcut,
 )
-from PySide6.QtWidgets import QApplication, QLabel, QMessageBox, QSizePolicy, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QLabel, QMessageBox, QSizePolicy, QVBoxLayout, QWidget
 
 from cctv_intrusion.ui.styles import colors, load_qss
 from cctv_intrusion.ui.widget.control_bar import ControlBar
@@ -64,7 +64,7 @@ class VideoWidget(QWidget):
     # .emit(...) 할 때마다 연결된 함수가 호출된다. (FileTree.file_selected와 같은 방식)
     # 클래스 변수로 선언해야 동작한다.
 
-    # 영상/스트림을 열었을 때: 경로 또는 URL (웹캠은 "0", "1" 같은 문자열)
+    # 영상을 열었을 때: 파일 경로
     source_opened = Signal(str)
     # 프레임을 하나 표시할 때마다: (BGR 원본 프레임 numpy 배열, 프레임 번호)
     # numpy 배열은 Qt가 모르는 타입이라 object로 선언한다.
@@ -75,9 +75,8 @@ class VideoWidget(QWidget):
 
         self.render = None  # 현재 열린 VideoRender (없으면 None)
         self.fps = DEFAULT_FPS
-        self.frame_count = 0  # 전체 프레임 수 (파일일 때만 의미 있음)
+        self.frame_count = 0  # 전체 프레임 수
         self.frame_index = -1  # 현재 화면에 표시 중인 프레임 번호
-        self.is_stream = False  # 실시간 스트림이면 True (탐색 불가)
         self.at_end = False  # 영상 끝까지 재생했는지
         self.controls_enabled = True  # False면 재생 컨트롤 전체 비활성화 (위험지역 편집 모드 등)
         self.was_playing = False  # 슬라이더를 잡기 전에 재생 중이었는지
@@ -148,33 +147,23 @@ class VideoWidget(QWidget):
         # 파일 트리에서 파일을 선택했을 때 호출됨
         self.open_source(path)
 
-    def open_source(self, source, is_stream=False):
-        # source: 파일 경로, 스트림 URL, 또는 웹캠 번호(int)
-
-        # 스트림 연결은 몇 초 걸릴 수 있으므로 그동안 마우스 커서를 모래시계로 표시
-        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
-        try:
-            render = VideoRender(source)
-        finally:
-            QApplication.restoreOverrideCursor()
+    def open_source(self, source):
+        # source: 영상 파일 경로
+        render = VideoRender(source)
 
         # 열기에 실패하면 지금 보고 있던 영상은 그대로 둔다
         if not render.is_opened():
             render.release()
-            if is_stream:
-                QMessageBox.critical(self, "연결 실패", f"스트림에 연결할 수 없습니다.\n{source}")
-            else:
-                QMessageBox.critical(self, "열기 실패", f"영상을 열 수 없습니다.\n{source}")
+            QMessageBox.critical(self, "열기 실패", f"영상을 열 수 없습니다.\n{source}")
             return False
 
         # 새 영상이 열린 게 확인되면 기존 영상 정리 후 교체
         self.close_video()
         self.render = render
-        self.is_stream = is_stream
         self.fps = render.get_fps()
         if self.fps <= 0:
             self.fps = DEFAULT_FPS
-        self.frame_count = 0 if is_stream else render.get_frame_count()
+        self.frame_count = render.get_frame_count()
 
         # 슬라이더 범위를 0 ~ 마지막 프레임 번호로 설정
         # blockSignals: 코드로 값을 바꿀 때 valueChanged가 발생해 go_to_frame이 불리지 않도록 잠시 막음
@@ -200,7 +189,6 @@ class VideoWidget(QWidget):
             self.render = None
         self.frame_index = -1
         self.frame_count = 0
-        self.is_stream = False
         self.at_end = False
         self.current_pixmap = None
         self.label.clear()
@@ -216,7 +204,7 @@ class VideoWidget(QWidget):
         if self.render is None:
             return
         # 끝까지 본 영상을 다시 재생하면 처음부터
-        if self.at_end and not self.is_stream:
+        if self.at_end:
             self.render.seek_frame(0)
             self.frame_index = -1
             self.at_end = False
@@ -247,8 +235,6 @@ class VideoWidget(QWidget):
             # 영상 끝 (또는 읽기 실패) → 재생 멈춤
             self.at_end = True
             self.pause()
-            if self.is_stream:
-                QMessageBox.warning(self, "스트림 끊김", "스트림에서 영상을 받을 수 없습니다.")
             return
 
         self.frame_index += 1
@@ -275,7 +261,7 @@ class VideoWidget(QWidget):
 
     def seek_seconds(self, seconds):
         # 현재 위치에서 seconds초 만큼 이동 (음수면 뒤로). 재생 중이면 이동한 위치부터 계속 재생된다.
-        if self.render is None or self.is_stream:
+        if self.render is None:
             return
         target = self.frame_index + round(seconds * self.fps)
         # 영상 처음(0) ~ 마지막 프레임 사이로 제한
@@ -284,7 +270,7 @@ class VideoWidget(QWidget):
 
     def go_to_frame(self, frame_number):
         # 원하는 프레임 번호로 이동해서 표시 (슬라이더, 5초 이동, 이전 프레임에서 사용)
-        if self.render is None or self.is_stream:
+        if self.render is None:
             return
 
         self.render.seek_frame(frame_number)
@@ -352,10 +338,6 @@ class VideoWidget(QWidget):
     def update_position(self):
         # 현재 프레임 번호에 맞춰 슬라이더와 시간 표시 갱신
         current_sec = self.frame_index / self.fps
-
-        if self.is_stream:
-            self.controls.set_live_time(current_sec)
-            return
 
         self.controls.slider.blockSignals(True)
         self.controls.slider.setValue(self.frame_index)
@@ -539,13 +521,11 @@ class VideoWidget(QWidget):
 
     def update_control_state(self):
         has_video = self.render is not None and self.controls_enabled
-        # 실시간 스트림은 탐색이 안 되므로 재생/정지만 가능
-        can_seek = has_video and not self.is_stream
 
         self.controls.play_button.setEnabled(has_video)
-        self.controls.prev_button.setEnabled(can_seek)
-        self.controls.next_button.setEnabled(can_seek)
-        self.controls.slider.setEnabled(can_seek)
+        self.controls.prev_button.setEnabled(has_video)
+        self.controls.next_button.setEnabled(has_video)
+        self.controls.slider.setEnabled(has_video)
 
         if self.render is None:
             self.controls.set_time(0, 0)

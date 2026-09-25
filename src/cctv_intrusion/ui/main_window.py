@@ -1,15 +1,11 @@
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
-    QInputDialog,
     QMainWindow,
     QMessageBox,
     QSplitter,
-    QVBoxLayout,
-    QWidget,
 )
 
 from cctv_intrusion.ui.widget.file_tree import FileTree
-from cctv_intrusion.ui.widget.tool_bar import ToolBar
 from cctv_intrusion.ui.widget.video_widget import VideoWidget
 from cctv_intrusion.ui.widget.zone_panel import ZonePanel
 
@@ -18,7 +14,7 @@ class MainWindow(QMainWindow):
     """메인 창
 
     팀원 연동용 Signal (팀원 코드에서 .connect(함수)로 연결해서 사용)
-      - window.video_widget.source_opened(str)        : 영상/스트림을 열었을 때
+      - window.video_widget.source_opened(str)        : 영상을 열었을 때
       - window.video_widget.frame_ready(ndarray, int) : 프레임을 표시할 때마다
       - window.zone_edit_started()                    : [위험지역 설정] 클릭
       - window.zone_edit_applied()                    : [완료] 클릭
@@ -39,7 +35,6 @@ class MainWindow(QMainWindow):
 
         splitter = QSplitter(Qt.Orientation.Horizontal)
 
-        self.tool_bar = ToolBar()
         self.file_tree = FileTree()
         self.video_widget = VideoWidget()
         self.zone_panel = ZonePanel()
@@ -51,7 +46,6 @@ class MainWindow(QMainWindow):
         splitter.setSizes([280, 860, 260])
 
         self.file_tree.file_selected.connect(self.video_widget.set_video)
-        self.tool_bar.stream_button.clicked.connect(self.on_stream_clicked)
         self.zone_panel.zone_button.clicked.connect(self.start_zone_edit)
         self.zone_panel.apply_button.clicked.connect(self.apply_zone_edit)
         self.zone_panel.cancel_button.clicked.connect(self.cancel_zone_edit)
@@ -65,41 +59,7 @@ class MainWindow(QMainWindow):
             lambda source: self.zone_panel.zone_button.setEnabled(True)
         )
 
-        # 상단 툴바 + 아래 (파일 트리 | 영상) 를 세로로 배치
-        central = QWidget()
-        layout = QVBoxLayout()
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(0)
-        layout.addWidget(self.tool_bar)
-        layout.addWidget(splitter, 1)
-        central.setLayout(layout)
-
-        self.setCentralWidget(central)
-
-    def on_stream_clicked(self):
-        # QInputDialog.getText: 한 줄 입력 다이얼로그. (입력 문자열, 확인 여부)를 돌려준다.
-        text, ok = QInputDialog.getText(
-            self,
-            "스트림 연결",
-            "RTSP URL 또는 웹캠 번호를 입력하세요.\n예) rtsp://192.168.0.10:554/stream , 0",
-        )
-        text = text.strip()
-        if not ok or not text:
-            return
-
-        if text.isdigit():
-            source = int(text)  # 웹캠 번호 (0, 1, ...)
-        elif "://" in text:
-            source = text  # rtsp://, http:// 등 URL
-        else:
-            QMessageBox.warning(
-                self, "입력 오류", "RTSP URL(rtsp://...) 또는 웹캠 번호(0, 1 ...)를 입력하세요."
-            )
-            return
-
-        if self.video_widget.open_source(source, is_stream=True):
-            # 파일 트리의 선택 표시는 지워서 지금 보고 있는 게 스트림임을 알 수 있게 함
-            self.file_tree.tree.clearSelection()
+        self.setCentralWidget(splitter)
 
     # ------------------------------------------------------------
     # 위험지역 편집 모드
@@ -134,7 +94,6 @@ class MainWindow(QMainWindow):
         self.video_widget.set_zones(self.zone_panel.zones, self.zone_panel.selected_index())
 
     def set_edit_mode(self, editing):
-        self.tool_bar.set_edit_mode(editing)
         self.zone_panel.set_edit_mode(editing)
         # 편집 중에는 재생 컨트롤(버튼, 슬라이더, 단축키) 비활성화
         self.video_widget.set_controls_enabled(not editing)

@@ -45,10 +45,6 @@ class ControlBar(QWidget):
     def set_time(self, current_sec, total_sec):
         self.time_label.setText(f"{format_time(current_sec)} / {format_time(total_sec)}")
 
-    def set_live_time(self, elapsed_sec):
-        # 실시간 스트림은 전체 길이가 없으므로 경과 시간만 표시
-        self.time_label.setText(f"LIVE  {format_time(elapsed_sec)}")
-
 
 def format_time(seconds):
     # 초 → "mm:ss" (1시간 이상이면 "h:mm:ss")

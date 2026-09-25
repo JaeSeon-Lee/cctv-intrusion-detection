@@ -1,7 +1,6 @@
 /* 앱 전체 공통 스타일 (main.py 에서 QApplication 에 적용)
  * 버튼 스타일은 우리가 만든 위젯 안의 버튼에만 적용한다.
  * 그냥 QPushButton 으로 쓰면 QMessageBox, QInputDialog 버튼까지 커진다. */
-ToolBar QPushButton,
 ControlBar QPushButton,
 ZonePanel QPushButton {
     font-size: 18px;
