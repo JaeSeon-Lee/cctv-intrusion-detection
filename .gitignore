@@ -31,3 +31,8 @@ data/output/*
 # OS
 .DS_Store
 Thumbs.db
+
+# 개인 문서·AI 도구 설정: README.md 외 md 파일과 .claude/ 는 커밋하지 않음
+*.md
+!README.md
+.claude/
