@@ -1,3 +1,8 @@
+import os
+
+os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
+
+import torch  # noqa: F401  # cv2보다 먼저 import해야 mac에서 추론 segfault가 안 남
 import cv2
 import numpy as np
 from ultralytics import YOLO
@@ -13,7 +18,6 @@ class PersonDetector:
         """프레임을 받아서 박스 좌표 배열(xyxy)을 반환"""
         results = self.model(frame, classes=self.classes, conf=self.conf, verbose=False)
 
-        print(results)
         return results[0].boxes.xyxy.cpu().numpy()
 
     def draw(self, frame: np.ndarray, boxes: np.ndarray, color=(0, 0, 255), thickness: int = 2) -> np.ndarray:
