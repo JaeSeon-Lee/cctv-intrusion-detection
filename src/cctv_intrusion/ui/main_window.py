@@ -9,6 +9,12 @@ from cctv_intrusion.ui.widget.file_tree import FileTree
 from cctv_intrusion.ui.widget.video_widget import VideoWidget
 from cctv_intrusion.ui.widget.zone_panel import ZonePanel
 
+# 영상을 열 때 창 크기를 영상에 맞추는 기준
+# 창이 화면(작업표시줄 제외)에서 차지할 수 있는 최대 비율
+MAX_SCREEN_RATIO = 0.9
+# 영상은 원본보다 크게 늘리지 않지만, 작은 영상은 화면에서 이 너비(px)까지는 키워서 보여준다
+MIN_VIDEO_WIDTH = 800
+
 
 class MainWindow(QMainWindow):
     """메인 창
@@ -44,6 +50,10 @@ class MainWindow(QMainWindow):
         splitter.addWidget(self.video_widget)
         splitter.addWidget(self.zone_panel)
         splitter.setSizes([280, 860, 260])
+        # 창 크기가 바뀌면 늘어나거나 줄어든 만큼 영상만 커지거나 작아지고, 양옆 패널은 너비를 유지한다
+        splitter.setStretchFactor(0, 0)
+        splitter.setStretchFactor(1, 1)
+        splitter.setStretchFactor(2, 0)
 
         self.file_tree.file_selected.connect(self.video_widget.set_video)
         self.zone_panel.zone_button.clicked.connect(self.start_zone_edit)
@@ -54,12 +64,53 @@ class MainWindow(QMainWindow):
         self.zone_panel.zones_changed.connect(self.update_zone_overlay)
         self.zone_panel.selection_changed.connect(self.update_zone_overlay)
 
-        # 영상이 열리면 [위험지역 설정] 버튼 활성화
-        self.video_widget.source_opened.connect(
-            lambda source: self.zone_panel.zone_button.setEnabled(True)
-        )
+        self.video_widget.source_opened.connect(self.on_source_opened)
 
         self.setCentralWidget(splitter)
+
+    def on_source_opened(self, source):
+        # 영상이 열리면 [위험지역 설정] 버튼 활성화
+        self.zone_panel.zone_button.setEnabled(True)
+        self.fit_to_video()
+
+    def fit_to_video(self):
+        # 영상 표시 영역이 영상 비율과 딱 맞도록(검은 여백 없이) 창 크기를 바꾸고 화면 가운데로 옮긴다.
+        # 사용자가 최대화/전체화면으로 둔 창은 건드리지 않는다.
+        if self.isMaximized() or self.isFullScreen():
+            return
+        video_width, video_height = self.video_widget.frame_size()
+        if video_width <= 0 or video_height <= 0:
+            return
+
+        label = self.video_widget.label
+        # 창 전체(테두리 포함)에서 영상 라벨을 뺀 나머지 크기: 파일 트리, 위험구역 패널, 재생 컨트롤, 창 테두리
+        extra_width = self.frameGeometry().width() - label.width()
+        extra_height = self.frameGeometry().height() - label.height()
+
+        screen = self.screen().availableGeometry()
+        max_width = screen.width() * MAX_SCREEN_RATIO - extra_width
+        max_height = screen.height() * MAX_SCREEN_RATIO - extra_height
+
+        # 화면에 들어가는 가장 큰 배율. 단, 원본(1배)보다 키우지 않고 작은 영상만 MIN_VIDEO_WIDTH 까지 키운다
+        scale = min(
+            max_width / video_width,
+            max_height / video_height,
+            max(1.0, MIN_VIDEO_WIDTH / video_width),
+        )
+        if scale <= 0:
+            return
+        label_width = round(video_width * scale)
+        label_height = round(video_height * scale)
+
+        self.resize(
+            self.width() + label_width - label.width(),
+            self.height() + label_height - label.height(),
+        )
+        # move는 창 테두리를 포함한 왼쪽 위 위치를 정한다
+        self.move(
+            screen.x() + (screen.width() - (label_width + extra_width)) // 2,
+            screen.y() + (screen.height() - (label_height + extra_height)) // 2,
+        )
 
     # ------------------------------------------------------------
     # 위험지역 편집 모드

@@ -194,6 +194,12 @@ class VideoWidget(QWidget):
         self.label.clear()
         self.update_control_state()
 
+    def frame_size(self):
+        # 열린 영상의 원본 프레임 크기 (너비, 높이). 영상이 없으면 (0, 0)
+        if self.render is None:
+            return 0, 0
+        return self.render.get_frame_size()
+
     # ------------------------------------------------------------
     # 재생 / 일시정지
     # ------------------------------------------------------------

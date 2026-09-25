@@ -22,6 +22,13 @@ class VideoRender:
     def get_fps(self):
         return self.capture.get(cv2.CAP_PROP_FPS)
 
+    def get_frame_size(self):
+        # 원본 프레임 크기 (너비, 높이)
+        return (
+            int(self.capture.get(cv2.CAP_PROP_FRAME_WIDTH)),
+            int(self.capture.get(cv2.CAP_PROP_FRAME_HEIGHT)),
+        )
+
     def get_frame_count(self):
         # 전체 프레임 수
         return int(self.capture.get(cv2.CAP_PROP_FRAME_COUNT))
