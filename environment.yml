@@ -1,4 +1,4 @@
-# conda 환경: python 버전만 관리하고, 파이썬 패키지는 pyproject.toml 을 따른다.
+# conda 환경: python 버전만 관리하고, 파이썬 패키지는 requirements.txt(고정 버전)를 따른다.
 #   conda env create -f environment.yml
 #   conda activate cctv-ai
 name: cctv-ai
@@ -8,4 +8,4 @@ dependencies:
   - python=3.12
   - pip
   - pip:
-      - -e .[dev]
+      - -r requirements.txt

@@ -1,0 +1,17 @@
+# 팀원 모두 같은 버전을 쓰기 위한 고정 버전 목록 (Python 3.12)
+# 어떤 라이브러리가 필요한지(최소 버전)는 pyproject.toml 에 있고, 여기에는 실제로 검증한 정확한 버전을 적는다.
+#   pip install -r requirements.txt
+# 라이브러리를 추가·업그레이드하면 pyproject.toml 과 이 파일을 함께 고친다.
+
+# 런타임
+PySide6==6.11.2          # UI (Qt)
+opencv-python==5.0.0.93  # 영상 입출력 (cv2)
+numpy==2.5.3             # 프레임 배열 (OpenCV가 사용)
+
+# 개발 도구
+ruff==0.16.8             # 린트·포맷
+pytest==9.1.1            # 테스트
+pytest-qt==4.5.0         # Qt 위젯 테스트
+
+# 이 프로젝트(cctv_intrusion 패키지)를 editable 모드로 설치
+-e .
