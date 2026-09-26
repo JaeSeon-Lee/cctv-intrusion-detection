@@ -15,3 +15,6 @@ def test_main_window_starts(qtbot):
     qtbot.addWidget(window)
     window.show()
     assert window.zone_panel.zones == []
+    # 창을 닫아야 closeEvent 에서 사람 탐지 스레드가 종료된다.
+    # (닫지 않고 window 가 해제되면 실행 중인 QThread 가 파괴되어 프로세스가 강제 종료됨)
+    window.close()
