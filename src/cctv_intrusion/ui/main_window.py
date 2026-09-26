@@ -1,4 +1,6 @@
-from PySide6.QtCore import Qt, Signal
+from pathlib import Path
+
+from PySide6.QtCore import Qt, Signal, Slot
 from PySide6.QtWidgets import (
     QMainWindow,
     QMessageBox,
@@ -8,6 +10,7 @@ from PySide6.QtWidgets import (
 from cctv_intrusion.ui.widget.file_tree import FileTree
 from cctv_intrusion.ui.widget.video_widget import VideoWidget
 from cctv_intrusion.ui.widget.zone_panel import ZonePanel
+from cctv_intrusion.zone import ZoneFileError, load_zones, save_zones, zone_file_path
 
 # 영상을 열 때 창 크기를 영상에 맞추는 기준
 # 창이 화면(작업표시줄 제외)에서 차지할 수 있는 최대 비율
@@ -27,6 +30,9 @@ class MainWindow(QMainWindow):
       - window.zone_edit_canceled()                   : [취소] 클릭
       - window.zone_panel.zones_changed(list)         : 위험구역이 추가/삭제될 때 (전체 구역 목록)
           [{"name": "구역 1", "points": [(x, y), ...]}, ...]  # points: 원본 프레임 픽셀 좌표
+          영상을 열 때 그 영상의 구역 파일을 불러온 직후에도 발생한다.
+
+    위험구역은 동영상과 같은 폴더의 같은 이름 .json 파일에 저장된다 (cctv_intrusion.zone 참고).
     """
 
     zone_edit_started = Signal()
@@ -37,6 +43,9 @@ class MainWindow(QMainWindow):
         super().__init__()
 
         self.setWindowTitle("CCTV Viewer")
+
+        self.video_path = None  # 지금 열려 있는 영상 경로 (위험구역 파일 위치를 정하는 데 사용)
+        self.loading_zones = False  # True면 파일에서 불러오는 중이라 저장하지 않음
         self.resize(1400, 1000)
 
         splitter = QSplitter(Qt.Orientation.Horizontal)
@@ -63,6 +72,8 @@ class MainWindow(QMainWindow):
         # 위험구역이 추가/삭제되거나 선택이 바뀌면 영상 위 표시를 다시 그림
         self.zone_panel.zones_changed.connect(self.update_zone_overlay)
         self.zone_panel.selection_changed.connect(self.update_zone_overlay)
+        # 위험구역이 추가/삭제될 때마다 영상 옆 json 파일에 저장
+        self.zone_panel.zones_changed.connect(self.save_zone_file)
 
         self.video_widget.source_opened.connect(self.on_source_opened)
 
@@ -71,6 +82,8 @@ class MainWindow(QMainWindow):
     def on_source_opened(self, source):
         # 영상이 열리면 [위험지역 설정] 버튼 활성화
         self.zone_panel.zone_button.setEnabled(True)
+        self.video_path = Path(source)
+        self.load_zone_file()
         self.fit_to_video()
 
     def fit_to_video(self):
@@ -140,6 +153,44 @@ class MainWindow(QMainWindow):
         self.video_widget.finish_drawing()  # 찍은 점은 버림
         self.set_edit_mode(False)
         self.zone_edit_canceled.emit()
+
+    # ------------------------------------------------------------
+    # 위험구역 파일 (동영상 옆 같은 이름 .json)
+    # ------------------------------------------------------------
+    def load_zone_file(self) -> None:
+        # 영상에 딸린 위험구역 파일이 있으면 불러와 바로 적용하고, 없으면 구역 목록을 비운다
+        try:
+            zones = load_zones(self.video_path)
+        except (OSError, ZoneFileError) as error:
+            zones = []
+            QMessageBox.warning(
+                self,
+                "위험구역 불러오기 실패",
+                f"위험구역 파일을 읽을 수 없어 빈 목록으로 시작합니다.\n"
+                f"구역을 추가하거나 삭제하면 이 파일을 덮어씁니다.\n\n"
+                f"{zone_file_path(self.video_path)}\n{error}",
+            )
+
+        # 불러온 내용을 그대로 다시 저장하지 않도록 막아둔다
+        # (특히 파일이 없을 때 빈 json이 생기거나, 읽기 실패한 파일을 바로 덮어쓰는 것을 방지)
+        self.loading_zones = True
+        try:
+            self.zone_panel.set_zones(zones)
+        finally:
+            self.loading_zones = False
+
+    @Slot(list)
+    def save_zone_file(self, zones: list[dict]) -> None:
+        if self.loading_zones or self.video_path is None:
+            return
+        try:
+            save_zones(self.video_path, zones)
+        except OSError as error:
+            QMessageBox.warning(
+                self,
+                "위험구역 저장 실패",
+                f"위험구역 파일을 저장할 수 없습니다.\n\n{zone_file_path(self.video_path)}\n{error}",
+            )
 
     def update_zone_overlay(self):
         self.video_widget.set_zones(self.zone_panel.zones, self.zone_panel.selected_index())

@@ -3,6 +3,7 @@ from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QListWidget, QPushButton, QVBoxLayout, QWidget
 
 from cctv_intrusion.ui.styles import load_qss
+from cctv_intrusion.zone import next_zone_number
 
 
 class ZonePanel(QWidget):
@@ -101,6 +102,15 @@ class ZonePanel(QWidget):
         self.list.addItem(name)
         self.zones_changed.emit(self.zones)
         return name
+
+    def set_zones(self, zones: list[dict]) -> None:
+        # 영상을 새로 열 때 그 영상의 구역 목록(파일에서 읽은 것)으로 통째로 바꾼다
+        self.zones = [dict(zone) for zone in zones]
+        self.next_number = next_zone_number(self.zones)
+        self.list.clear()
+        self.list.addItems([zone["name"] for zone in self.zones])
+        self.zones_changed.emit(self.zones)
+        self.selection_changed.emit(self.selected_index())
 
     def remove_zone(self, index):
         if not 0 <= index < len(self.zones):
