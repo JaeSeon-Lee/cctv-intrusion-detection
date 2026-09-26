@@ -7,6 +7,7 @@ from PySide6.QtWidgets import (
     QSplitter,
 )
 
+from cctv_intrusion.detection import PersonDetection
 from cctv_intrusion.ui.widget.file_tree import FileTree
 from cctv_intrusion.ui.widget.video_widget import VideoWidget
 from cctv_intrusion.ui.widget.zone_panel import ZonePanel
@@ -31,6 +32,9 @@ class MainWindow(QMainWindow):
       - window.zone_panel.zones_changed(list)         : 위험구역이 추가/삭제될 때 (전체 구역 목록)
           [{"name": "구역 1", "points": [(x, y), ...]}, ...]  # points: 원본 프레임 픽셀 좌표
           영상을 열 때 그 영상의 구역 파일을 불러온 직후에도 발생한다.
+      - window.person_detection.detected(int, list)   : 사람 탐지 결과가 나올 때마다
+          (프레임 번호, [Detection(x1, y1, x2, y2, confidence), ...])  # 원본 프레임 픽셀 좌표
+          추론이 재생보다 느리면 중간 프레임은 건너뛰므로 모든 프레임 번호가 오지는 않는다.
 
     위험구역은 동영상과 같은 폴더의 같은 이름 .json 파일에 저장된다 (cctv_intrusion.zone 참고).
     """
@@ -77,9 +81,18 @@ class MainWindow(QMainWindow):
 
         self.video_widget.source_opened.connect(self.on_source_opened)
 
+        # 사람 탐지: 표시하는 프레임마다 워커 스레드로 보내고, 결과 박스를 영상 위에 그린다
+        self.person_detection = PersonDetection()
+        self.video_widget.frame_ready.connect(self.person_detection.submit)
+        self.person_detection.detected.connect(self.video_widget.set_detections)
+        self.person_detection.failed.connect(self.on_detection_failed)
+        self.person_detection.start()
+
         self.setCentralWidget(splitter)
 
     def on_source_opened(self, source):
+        # 이전 영상에서 탐지 중이던 결과가 새 영상 위에 그려지지 않도록 버린다
+        self.person_detection.reset()
         # 영상이 열리면 [위험지역 설정] 버튼 활성화
         self.zone_panel.zone_button.setEnabled(True)
         self.video_path = Path(source)
@@ -202,7 +215,17 @@ class MainWindow(QMainWindow):
         # 편집 중에 다른 영상으로 바뀌지 않도록 파일 트리도 잠금
         self.file_tree.setEnabled(not editing)
 
+    @Slot(str)
+    def on_detection_failed(self, message: str) -> None:
+        QMessageBox.warning(
+            self,
+            "사람 탐지 불가",
+            f"YOLO 모델을 불러오지 못해 사람 탐지 없이 영상만 재생합니다.\n"
+            f"처음 실행이라면 모델을 내려받을 수 있도록 인터넷 연결을 확인하세요.\n\n{message}",
+        )
+
     def closeEvent(self, event):
-        # 창을 닫을 때 열려 있는 영상 자원 정리
+        # 창을 닫을 때 열려 있는 영상 자원 정리, 탐지 스레드 종료
         self.video_widget.close_video()
+        self.person_detection.stop()
         super().closeEvent(event)
