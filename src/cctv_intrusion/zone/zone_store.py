@@ -6,7 +6,7 @@
 #     "video": "a.mp4",
 #     "zones": [{"name": "구역 1", "points": [[x, y], ...], "level": "danger"}, ...]
 #   }
-#   level: caution|warning|danger|restricted|critical (숫자 1~5, 한글 별칭도 읽기 가능)
+#   level: caution|danger|detect (숫자 1~3, 한글·레거시 별칭도 읽기 가능)
 #   points: 원본 프레임 픽셀 좌표
 from __future__ import annotations
 

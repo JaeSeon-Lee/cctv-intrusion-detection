@@ -1,7 +1,7 @@
-"""위험구역 등급 정의.
+"""위험구역 경보 등급 정의.
 
-숫자가 클수록 더 심각하다.
-  1 주의 → 2 위험 → 3 금지
+숫자가 클수록 민감(경보까지 필요한 체류 시간이 짧다).
+  1 주의(3초) → 2 위험(2초) → 3 감지(1초)
 """
 
 from __future__ import annotations
@@ -13,13 +13,15 @@ _LEGACY_ALIASES = {
     "주의": "caution",
     "경고": "danger",
     "위험": "danger",
-    "금지": "restricted",
-    "긴급": "restricted",
-    "격리": "restricted",
-    "금지구역": "restricted",
+    "감지": "detect",
+    "금지": "detect",
+    "긴급": "detect",
+    "격리": "detect",
+    "금지구역": "detect",
     "주의구역": "caution",
     "warning": "danger",
-    "critical": "restricted",
+    "restricted": "detect",
+    "critical": "detect",
 }
 
 
@@ -28,12 +30,13 @@ class ZoneLevel:
     id: str
     rank: int
     label: str
+    alert_seconds: float  # 이 시간 이상 구역에 있으면 경보
 
 
 ZONE_LEVELS: tuple[ZoneLevel, ...] = (
-    ZoneLevel("caution", 1, "주의"),
-    ZoneLevel("danger", 2, "위험"),
-    ZoneLevel("restricted", 3, "금지"),
+    ZoneLevel("caution", 1, "주의", alert_seconds=3.0),
+    ZoneLevel("danger", 2, "위험", alert_seconds=2.0),
+    ZoneLevel("detect", 3, "감지", alert_seconds=1.0),
 )
 
 DEFAULT_LEVEL_ID = "danger"
@@ -67,10 +70,15 @@ def normalize_level_id(level_id: str | int | None) -> str:
     return get_level(level_id).id
 
 
+def alert_seconds_for(level_id: str | int | None) -> float:
+    """해당 등급이 경보로 바뀌는 데 필요한 구역 내 체류 시간(초)."""
+    return get_level(level_id).alert_seconds
+
+
 def format_level(level_id: str | int | None) -> str:
     """목록·라벨용: '2 위험'."""
     level = get_level(level_id)
-    return f"{level.label}"
+    return f"{level.rank} {level.label}"
 
 
 def format_zone_item(name: str, level_id: str | int | None) -> str:

@@ -46,7 +46,7 @@ def test_save_level_normalized(tmp_path):
     )
     zones = load_zones(video)
     assert zones[0].level == "caution"
-    assert zones[1].level == "restricted"
+    assert zones[1].level == "detect"
 
 
 def test_save_empty_list_overwrites(tmp_path):
@@ -97,7 +97,10 @@ def test_next_zone_number():
 
 
 def test_level_helpers():
-    assert normalize_level_id("금지") == "restricted"
+    assert normalize_level_id("금지") == "detect"
+    assert normalize_level_id("감지") == "detect"
     assert normalize_level_id(1) == "caution"
     assert get_level("critical").rank == 3
+    assert get_level("detect").alert_seconds == 1.0
+    assert get_level("caution").alert_seconds == 3.0
     assert format_level("danger") == "2 위험"

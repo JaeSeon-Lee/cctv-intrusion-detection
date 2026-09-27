@@ -5,8 +5,10 @@ from cctv_intrusion.zone.levels import get_level
 
 _ZONE_LEVEL_COLORS = {
     "caution": QColor(234, 179, 8),
-    "warning": QColor(245, 158, 11),
     "danger": QColor(220, 38, 38),
+    "detect": QColor(185, 28, 28),
+    # 레거시 id (json에 남아 있을 수 있음)
+    "warning": QColor(245, 158, 11),
     "restricted": QColor(185, 28, 28),
     "critical": QColor(127, 29, 29),
 }
