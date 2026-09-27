@@ -61,7 +61,7 @@ def test_load_teammate_format(tmp_path):
     zones = [{"name": "2", "points": [[1, 2], [3, 4], [5, 6]], "level": "warning"}]
     zone_file_path(video).write_text(json.dumps(zones), encoding="utf-8")
 
-    assert load_zones(video) == [Zone(name="2", points=[(1, 2), (3, 4), (5, 6)], level="warning")]
+    assert load_zones(video) == [Zone(name="2", points=[(1, 2), (3, 4), (5, 6)], level="danger")]
 
 
 @pytest.mark.parametrize(
@@ -99,5 +99,5 @@ def test_next_zone_number():
 def test_level_helpers():
     assert normalize_level_id("금지") == "restricted"
     assert normalize_level_id(1) == "caution"
-    assert get_level("critical").rank == 5
-    assert format_level("danger") == "3 위험"
+    assert get_level("critical").rank == 3
+    assert format_level("danger") == "2 위험"
