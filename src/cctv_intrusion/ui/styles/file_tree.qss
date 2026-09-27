@@ -1,15 +1,48 @@
+FileTree {
+    background-color: #f7f9fb;
+    border-right: 1px solid #cfd7e1;
+}
+
+QLabel#panelTitle {
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.4px;
+    color: #475569;
+    padding: 14px 16px 8px 16px;
+    background-color: #f7f9fb;
+}
+
+QLabel#panelSubtitle {
+    font-size: 11px;
+    color: #64748b;
+    padding: 0 16px 10px 16px;
+    background-color: #f7f9fb;
+}
+
 QTreeView {
-    background-color: #dfdfdf;
-    font-size: 24px;
-    color: #000;
+    background-color: #f7f9fb;
+    font-size: 13px;
+    color: #1e293b;
     border: none;
+    outline: none;
+    padding: 0 8px 8px 8px;
 }
 
 QTreeView::item {
-    padding: 12px 24px;
+    padding: 8px 10px;
+    margin: 1px 0;
+    border-radius: 6px;
+}
+
+QTreeView::item:hover {
+    background-color: #e8eef4;
 }
 
 QTreeView::item:selected {
-    background-color: #3a6ea5;
-    color: white;
+    background-color: #0f766e;
+    color: #ffffff;
+}
+
+QTreeView::branch {
+    background: transparent;
 }

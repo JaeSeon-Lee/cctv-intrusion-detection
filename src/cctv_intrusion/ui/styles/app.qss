@@ -1,8 +1,78 @@
-/* 앱 전체 공통 스타일 (main.py 에서 QApplication 에 적용)
- * 버튼 스타일은 우리가 만든 위젯 안의 버튼에만 적용한다.
- * 그냥 QPushButton 으로 쓰면 QMessageBox, QInputDialog 버튼까지 커진다. */
+/* 앱 전체 공통 스타일
+ * 버튼은 ControlBar / ZonePanel 안의 것만 커스텀해
+ * QMessageBox 등 시스템 대화상자는 기본 모양을 유지한다. */
+
+QMainWindow {
+    background-color: #e4e9ef;
+}
+
+QSplitter::handle {
+    background-color: #c5ced8;
+    width: 1px;
+    height: 1px;
+}
+
+QSplitter::handle:hover {
+    background-color: #0f766e;
+}
+
 ControlBar QPushButton,
 ZonePanel QPushButton {
-    font-size: 18px;
-    padding: 6px 16px;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 8px 14px;
+    border: 1px solid #b8c2ce;
+    border-radius: 8px;
+    background-color: #ffffff;
+    color: #1e293b;
+}
+
+ControlBar QPushButton:hover,
+ZonePanel QPushButton:hover {
+    background-color: #f1f5f9;
+    border-color: #94a3b8;
+}
+
+ControlBar QPushButton:pressed,
+ZonePanel QPushButton:pressed {
+    background-color: #e2e8f0;
+}
+
+ControlBar QPushButton:disabled,
+ZonePanel QPushButton:disabled {
+    background-color: #eef2f6;
+    color: #94a3b8;
+    border-color: #d5dde6;
+}
+
+QScrollBar:vertical {
+    background: transparent;
+    width: 10px;
+    margin: 4px 2px;
+}
+
+QScrollBar::handle:vertical {
+    background: #b0bbc8;
+    border-radius: 5px;
+    min-height: 28px;
+}
+
+QScrollBar::handle:vertical:hover {
+    background: #8b98a8;
+}
+
+QScrollBar::add-line:vertical,
+QScrollBar::sub-line:vertical,
+QScrollBar::add-page:vertical,
+QScrollBar::sub-page:vertical {
+    height: 0;
+    background: none;
+}
+
+QToolTip {
+    background-color: #1e293b;
+    color: #f8fafc;
+    border: none;
+    padding: 6px 10px;
+    border-radius: 6px;
 }

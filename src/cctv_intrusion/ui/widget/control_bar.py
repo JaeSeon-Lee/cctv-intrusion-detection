@@ -14,14 +14,16 @@ class ControlBar(QWidget):
     def __init__(self):
         super().__init__()
 
-        self.prev_button = QPushButton("◀ 5초")
+        self.prev_button = QPushButton("−5초")
         self.play_button = QPushButton("재생")
-        self.next_button = QPushButton("5초 ▶")
+        self.next_button = QPushButton("+5초")
 
         self.slider = QSlider(Qt.Orientation.Horizontal)
         self.slider.setRange(0, 0)
 
         self.time_label = QLabel("00:00 / 00:00")
+        self.play_button.setObjectName("playButton")
+        self.time_label.setObjectName("timeLabel")
 
         # NoFocus: 클릭해도 키보드 포커스를 가져가지 않게 한다.
         # 포커스가 버튼에 있으면 Space 키가 버튼 클릭으로 처리되어 단축키와 겹칠 수 있기 때문.
@@ -31,7 +33,8 @@ class ControlBar(QWidget):
         self.setStyleSheet(load_qss("control_bar"))
 
         layout = QHBoxLayout()
-        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setContentsMargins(12, 10, 12, 10)
+        layout.setSpacing(8)
         layout.addWidget(self.prev_button)
         layout.addWidget(self.play_button)
         layout.addWidget(self.next_button)

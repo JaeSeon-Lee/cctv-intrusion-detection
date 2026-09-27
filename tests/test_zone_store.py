@@ -3,9 +3,13 @@ import json
 import pytest
 
 from cctv_intrusion.zone import (
+    Zone,
     ZoneFileError,
+    format_level,
+    get_level,
     load_zones,
     next_zone_number,
+    normalize_level_id,
     save_zones,
     zone_file_path,
 )
@@ -23,30 +27,41 @@ def test_no_file_means_no_zones(tmp_path):
 
 def test_save_then_load_round_trip(tmp_path):
     video = tmp_path / "cam1.mp4"
-    save_zones(video, [{"name": "구역 1", "points": TRIANGLE}])
+    save_zones(video, [Zone(name="구역 1", points=TRIANGLE)])
 
-    assert load_zones(video) == [{"name": "구역 1", "points": TRIANGLE, "level": "danger"}]
+    assert load_zones(video) == [Zone(name="구역 1", points=TRIANGLE, level="danger")]
     saved = json.loads(zone_file_path(video).read_text(encoding="utf-8"))
     assert saved["video"] == "cam1.mp4"
     assert not (tmp_path / "cam1.json.tmp").exists()
 
 
+def test_save_level_normalized(tmp_path):
+    video = tmp_path / "cam1.mp4"
+    save_zones(
+        video,
+        [
+            {"name": "구역 1", "points": TRIANGLE, "level": "주의"},
+            {"name": "구역 2", "points": TRIANGLE, "level": 4},
+        ],
+    )
+    zones = load_zones(video)
+    assert zones[0].level == "caution"
+    assert zones[1].level == "restricted"
+
+
 def test_save_empty_list_overwrites(tmp_path):
     video = tmp_path / "cam1.mp4"
-    save_zones(video, [{"name": "구역 1", "points": TRIANGLE}])
+    save_zones(video, [Zone(name="구역 1", points=TRIANGLE)])
     save_zones(video, [])
     assert load_zones(video) == []
 
 
 def test_load_teammate_format(tmp_path):
-    # feature/danger 의 DangerZoneStore 가 만든 파일 (이름이 번호만, 최상위가 목록인 경우도 허용)
     video = tmp_path / "cam1.mp4"
     zones = [{"name": "2", "points": [[1, 2], [3, 4], [5, 6]], "level": "warning"}]
     zone_file_path(video).write_text(json.dumps(zones), encoding="utf-8")
 
-    assert load_zones(video) == [
-        {"name": "2", "points": [(1, 2), (3, 4), (5, 6)], "level": "warning"}
-    ]
+    assert load_zones(video) == [Zone(name="2", points=[(1, 2), (3, 4), (5, 6)], level="warning")]
 
 
 @pytest.mark.parametrize(
@@ -68,6 +83,21 @@ def test_invalid_file_raises(tmp_path, content):
 
 def test_next_zone_number():
     assert next_zone_number([]) == 1
-    assert next_zone_number([{"name": "구역 1"}, {"name": "구역 5"}]) == 6
-    assert next_zone_number([{"name": "3"}]) == 4
-    assert next_zone_number([{"name": "입구"}, {"name": "창고"}]) == 3
+    assert (
+        next_zone_number(
+            [Zone(name="구역 1", points=TRIANGLE), Zone(name="구역 5", points=TRIANGLE)]
+        )
+        == 6
+    )
+    assert next_zone_number([Zone(name="3", points=TRIANGLE)]) == 4
+    assert (
+        next_zone_number([Zone(name="입구", points=TRIANGLE), Zone(name="창고", points=TRIANGLE)])
+        == 3
+    )
+
+
+def test_level_helpers():
+    assert normalize_level_id("금지") == "restricted"
+    assert normalize_level_id(1) == "caution"
+    assert get_level("critical").rank == 5
+    assert format_level("danger") == "3 위험"

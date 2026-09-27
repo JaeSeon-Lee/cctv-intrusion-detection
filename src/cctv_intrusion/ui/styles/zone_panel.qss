@@ -1,36 +1,122 @@
-/* 버튼 기본 스타일(font-size, padding)은 app.qss 참고 */
+ZonePanel {
+    background-color: #f7f9fb;
+    border-left: 1px solid #cfd7e1;
+}
+
+QPushButton#primaryAction {
+    background-color: #0f766e;
+    border-color: #0f766e;
+    color: #ffffff;
+}
+
+QPushButton#primaryAction:hover {
+    background-color: #0d9488;
+    border-color: #0d9488;
+    color: #ffffff;
+}
+
+QPushButton#primaryAction:pressed {
+    background-color: #115e59;
+    border-color: #115e59;
+    color: #ffffff;
+}
+
+QPushButton#primaryAction:disabled {
+    background-color: #99b8b4;
+    border-color: #99b8b4;
+    color: #e8f2f1;
+}
+
 QPushButton#apply {
-    background-color: #3a6ea5;
-    color: white;
+    background-color: #0f766e;
+    border-color: #0f766e;
+    color: #ffffff;
+}
+
+QPushButton#apply:hover {
+    background-color: #0d9488;
+    border-color: #0d9488;
+    color: #ffffff;
+}
+
+QPushButton#cancel {
+    background-color: #ffffff;
+    color: #475569;
 }
 
 QLabel#editLabel {
-    font-size: 16px;
-    color: #c0392b;
+    font-size: 12px;
+    line-height: 1.4;
+    color: #b45309;
+    background-color: #fff7ed;
+    border: 1px solid #fdba74;
+    border-radius: 8px;
+    padding: 10px 12px;
 }
 
 QLabel#title {
-    font-size: 18px;
-    font-weight: bold;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.4px;
+    color: #475569;
+    padding-top: 4px;
 }
 
 QLabel#hint {
-    font-size: 14px;
-    color: #666;
+    font-size: 11px;
+    color: #64748b;
+    padding: 4px 2px 0 2px;
+}
+
+QComboBox#levelCombo {
+    font-size: 13px;
+    font-weight: 600;
+    padding: 6px 10px;
+    border: 1px solid #d5dde6;
+    border-radius: 8px;
+    background-color: #ffffff;
+    color: #1e293b;
+    min-height: 28px;
+}
+
+QComboBox#levelCombo:hover {
+    border-color: #94a3b8;
+}
+
+QComboBox#levelCombo::drop-down {
+    border: none;
+    width: 24px;
+}
+
+QComboBox#levelCombo QAbstractItemView {
+    background-color: #ffffff;
+    border: 1px solid #d5dde6;
+    selection-background-color: #0f766e;
+    selection-color: #ffffff;
+    padding: 4px;
 }
 
 QListWidget {
-    background-color: #dfdfdf;
-    font-size: 20px;
-    color: #000;
-    border: none;
+    background-color: #ffffff;
+    font-size: 13px;
+    color: #1e293b;
+    border: 1px solid #d5dde6;
+    border-radius: 10px;
+    padding: 4px;
+    outline: none;
 }
 
 QListWidget::item {
-    padding: 10px 16px;
+    padding: 10px 12px;
+    margin: 2px;
+    border-radius: 6px;
+}
+
+QListWidget::item:hover {
+    background-color: #eef2f6;
 }
 
 QListWidget::item:selected {
-    background-color: #f1c40f;
-    color: #000;
+    background-color: #fbbf24;
+    color: #1e293b;
 }

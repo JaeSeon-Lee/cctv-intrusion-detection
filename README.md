@@ -38,22 +38,18 @@ NVIDIA GPU를 쓰고 싶으면 [PyTorch 설치 페이지](https://pytorch.org/ge
 ## 프로젝트 구조
 
 ```
-├── pyproject.toml          # 패키지 정보, 의존성(최소 버전), ruff/pytest 설정
-├── requirements.txt        # 팀 공통 고정 버전
-├── environment.yml         # conda 환경 (python 3.12 + requirements.txt)
-├── data/
-│   ├── input/              # 입력 영상
-│   └── output/             # 침입 클립 저장 위치
-├── models/                 # YOLO 모델 파일 (자동 다운로드, 커밋 안 함)
+├── pyproject.toml / requirements.txt / environment.yml
+├── data/input · data/output
+├── models/                     # YOLO 가중치 (자동 다운로드)
 ├── src/cctv_intrusion/
-│   ├── __main__.py         # python -m cctv_intrusion 진입점
-│   ├── app.py              # QApplication 실행
-│   ├── paths.py            # data/, models/ 경로 상수 (DATA_DIR, OUTPUT_DIR, MODELS_DIR ...)
-│   ├── ui/                 # PySide6 화면 (main_window, widget/, styles/)
-│   ├── video/              # OpenCV 영상 입출력
-│   ├── zone/               # 위험구역 파일 저장·불러오기
-│   └── detection/          # YOLO 사람 탐지 (워커 스레드)
-└── tests/                  # pytest
+│   ├── app.py / __main__.py    # 진입점
+│   ├── paths.py
+│   ├── ui/                     # PySide6 (main_window, widget/, styles/)
+│   │   └── widget/             # file_tree, video_*, control_bar, zone_panel
+│   ├── video/                  # OpenCV 입출력
+│   ├── zone/                   # Zone 모델 · 등급 · json 저장
+│   └── detection/              # YOLO 사람 탐지 (워커 스레드)
+└── tests/
 ```
 
 ## Pipeline

@@ -1,8 +1,73 @@
-/* 버튼 기본 스타일(font-size, padding)은 app.qss 참고 */
-QPushButton {
-    min-width: 80px;
+ControlBar {
+    background-color: #f1f5f9;
+    border-top: 1px solid #cfd7e1;
 }
 
-QLabel {
-    font-size: 18px;
+ControlBar QPushButton {
+    min-width: 72px;
+}
+
+ControlBar QPushButton#playButton {
+    background-color: #0f766e;
+    border-color: #0f766e;
+    color: #ffffff;
+    min-width: 88px;
+}
+
+ControlBar QPushButton#playButton:hover {
+    background-color: #0d9488;
+    border-color: #0d9488;
+    color: #ffffff;
+}
+
+ControlBar QPushButton#playButton:pressed {
+    background-color: #115e59;
+    border-color: #115e59;
+}
+
+ControlBar QPushButton#playButton:disabled {
+    background-color: #99b8b4;
+    border-color: #99b8b4;
+    color: #e8f2f1;
+}
+
+QLabel#timeLabel {
+    font-size: 12px;
+    font-weight: 600;
+    color: #475569;
+    min-width: 96px;
+    padding: 0 4px;
+}
+
+QSlider::groove:horizontal {
+    height: 6px;
+    background: #cbd5e1;
+    border-radius: 3px;
+}
+
+QSlider::sub-page:horizontal {
+    background: #0f766e;
+    border-radius: 3px;
+}
+
+QSlider::add-page:horizontal {
+    background: #cbd5e1;
+    border-radius: 3px;
+}
+
+QSlider::handle:horizontal {
+    width: 16px;
+    height: 16px;
+    margin: -6px 0;
+    background: #ffffff;
+    border: 2px solid #0f766e;
+    border-radius: 8px;
+}
+
+QSlider::handle:horizontal:hover {
+    background: #ecfdf5;
+}
+
+QSlider::handle:horizontal:disabled {
+    border-color: #94a3b8;
 }

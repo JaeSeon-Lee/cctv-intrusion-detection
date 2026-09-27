@@ -1,6 +1,7 @@
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
     QFileSystemModel,
+    QLabel,
     QTreeView,
     QVBoxLayout,
     QWidget,
@@ -43,11 +44,19 @@ class FileTree(QWidget):
         # output 폴더는 처음부터 펼쳐서 새 클립이 바로 보이게 함
         self.tree.expand(self.model.index(output_path))
 
-        self.tree.setStyleSheet(load_qss("file_tree"))
+        title = QLabel("영상 목록")
+        title.setObjectName("panelTitle")
+        subtitle = QLabel("재생할 파일을 선택하세요")
+        subtitle.setObjectName("panelSubtitle")
+
+        self.setStyleSheet(load_qss("file_tree"))
 
         layout = QVBoxLayout()
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.addWidget(self.tree)
+        layout.setSpacing(0)
+        layout.addWidget(title)
+        layout.addWidget(subtitle)
+        layout.addWidget(self.tree, 1)
 
         self.setLayout(layout)
 

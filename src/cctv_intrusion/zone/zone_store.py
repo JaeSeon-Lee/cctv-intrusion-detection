@@ -1,24 +1,22 @@
 # 위험구역을 동영상 옆 json 파일로 저장하고 불러온다.
 # 동영상과 같은 폴더, 같은 파일 이름에 확장자만 .json (예: data/input/a.mp4 → data/input/a.json)
 #
-# 파일 형식은 팀원 DangerZoneStore(feature/danger)와 같게 맞춰서 서로 만든 파일을 그대로 읽을 수 있다.
+# 파일 형식:
 #   {
 #     "video": "a.mp4",
 #     "zones": [{"name": "구역 1", "points": [[x, y], ...], "level": "danger"}, ...]
 #   }
+#   level: caution|warning|danger|restricted|critical (숫자 1~5, 한글 별칭도 읽기 가능)
 #   points: 원본 프레임 픽셀 좌표
+from __future__ import annotations
+
 import json
 import re
 from pathlib import Path
 
-type Point = tuple[int, int]
-type Zone = dict  # {"name": str, "points": list[Point], "level": str(파일에서 읽은 경우)}
+from .models import MIN_POINTS, Zone
 
 ZONE_FILE_SUFFIX = ".json"
-# 파일에 level이 없을 때 쓰는 기본 위험 등급 (팀원 DangerZone 기본값과 같음)
-DEFAULT_LEVEL = "danger"
-# 다각형이 되려면 필요한 최소 꼭짓점 수
-MIN_POINTS = 3
 # 구역 이름 끝에 붙은 번호 ("구역 3" → 3, 팀원 형식 "3" → 3)
 NAME_NUMBER = re.compile(r"(\d+)\s*$")
 
@@ -32,8 +30,10 @@ def zone_file_path(video_path: str | Path) -> Path:
 
 
 def load_zones(video_path: str | Path) -> list[Zone]:
-    # 동영상에 딸린 위험구역 파일을 읽는다. 파일이 없으면 빈 목록.
-    # 파일은 있는데 읽을 수 없으면 OSError, 형식이 틀리면 ZoneFileError
+    """동영상에 딸린 위험구역 파일을 읽는다. 파일이 없으면 빈 목록.
+
+    파일은 있는데 읽을 수 없으면 OSError, 형식이 틀리면 ZoneFileError.
+    """
     path = zone_file_path(video_path)
     if not path.exists():
         return []
@@ -48,33 +48,25 @@ def load_zones(video_path: str | Path) -> list[Zone]:
     if not isinstance(items, list):
         raise ZoneFileError('"zones" 목록이 없습니다.')
 
-    zones = []
+    zones: list[Zone] = []
     for i, item in enumerate(items):
         try:
-            points = [(int(x), int(y)) for x, y in item["points"]]
-            name = str(item.get("name", i + 1))
-            level = str(item.get("level", DEFAULT_LEVEL))
+            zone = Zone.from_dict(item, default_name=str(i + 1))
         except (KeyError, TypeError, ValueError, AttributeError) as error:
             raise ZoneFileError(f"{i + 1}번째 구역 형식이 잘못되었습니다.") from error
-        if len(points) < MIN_POINTS:
+        if len(zone.points) < MIN_POINTS:
             raise ZoneFileError(f"{i + 1}번째 구역의 꼭짓점이 {MIN_POINTS}개 미만입니다.")
-        zones.append({"name": name, "points": points, "level": level})
+        zones.append(zone)
     return zones
 
 
-def save_zones(video_path: str | Path, zones: list[Zone]) -> None:
-    # 위험구역 목록 전체로 파일을 덮어쓴다. 구역이 0개여도 빈 목록으로 저장한다.
+def save_zones(video_path: str | Path, zones: list[Zone] | list[dict]) -> None:
+    """위험구역 목록 전체로 파일을 덮어쓴다. 구역이 0개여도 빈 목록으로 저장한다."""
     path = zone_file_path(video_path)
+    normalized = [zone if isinstance(zone, Zone) else Zone.from_dict(zone) for zone in zones]
     payload = {
         "video": Path(video_path).name,
-        "zones": [
-            {
-                "name": zone["name"],
-                "points": [[int(x), int(y)] for x, y in zone["points"]],
-                "level": zone.get("level", DEFAULT_LEVEL),
-            }
-            for zone in zones
-        ],
+        "zones": [zone.to_dict() for zone in normalized],
     }
     text = json.dumps(payload, ensure_ascii=False, indent=2)
 
@@ -88,7 +80,8 @@ def save_zones(video_path: str | Path, zones: list[Zone]) -> None:
         raise
 
 
-def next_zone_number(zones: list[Zone]) -> int:
-    # 새로 만들 구역에 붙일 번호: 이름 끝 번호 중 가장 큰 값 + 1 (이름에 번호가 없으면 구역 수 + 1)
-    numbers = [int(match.group(1)) for zone in zones if (match := NAME_NUMBER.search(zone["name"]))]
+def next_zone_number(zones: list[Zone] | list[dict]) -> int:
+    """새로 만들 구역에 붙일 번호: 이름 끝 번호 중 가장 큰 값 + 1."""
+    names = [zone.name if isinstance(zone, Zone) else str(zone.get("name", "")) for zone in zones]
+    numbers = [int(match.group(1)) for name in names if (match := NAME_NUMBER.search(name))]
     return max(numbers, default=len(zones)) + 1
