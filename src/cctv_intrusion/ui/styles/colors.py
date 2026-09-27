@@ -18,6 +18,15 @@ ZONE_DRAWING = QColor(14, 165, 233)
 ZONE_NAME_TEXT = QColor(255, 255, 255)
 PERSON_BOX = QColor(16, 185, 129)
 
+# 영상 우측 상단 경보 상태 배지
+MONITOR_STATE_COLORS = {
+    "idle": QColor(100, 116, 139),  # 대기
+    "armed": QColor(15, 118, 110),  # 감지
+    "alarm": QColor(220, 38, 38),  # 경보
+    "cleared": QColor(217, 119, 6),  # 해제
+}
+MONITOR_STATE_TEXT = QColor(255, 255, 255)
+
 
 def zone_color(level_id: str | int | None) -> QColor:
     level = get_level(level_id)

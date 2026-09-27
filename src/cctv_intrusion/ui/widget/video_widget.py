@@ -3,10 +3,15 @@ from PySide6.QtGui import QImage, QKeySequence, QPixmap, QShortcut
 from PySide6.QtWidgets import QMessageBox, QSizePolicy, QVBoxLayout, QWidget
 
 from cctv_intrusion.detection import Detection
+from cctv_intrusion.intrusion import MonitorState
 from cctv_intrusion.ui.styles import load_qss
 from cctv_intrusion.ui.widget.control_bar import ControlBar
 from cctv_intrusion.ui.widget.video_label import VideoLabel
-from cctv_intrusion.ui.widget.video_overlay import draw_detections, draw_zones
+from cctv_intrusion.ui.widget.video_overlay import (
+    draw_detections,
+    draw_monitor_state,
+    draw_zones,
+)
 from cctv_intrusion.video import VideoRender
 from cctv_intrusion.zone import Zone
 
@@ -39,6 +44,7 @@ class VideoWidget(QWidget):
         self.drawing_points: list[tuple[int, int]] = []
         self.dragging_point = -1
         self.detections: list[Detection] = []
+        self.monitor_state = MonitorState.IDLE
         self.view_scale = 1.0
         self.view_offset_x = 0.0
         self.view_offset_y = 0.0
@@ -231,6 +237,7 @@ class VideoWidget(QWidget):
             drawing_points=self.drawing_points,
         )
         draw_detections(scaled, self.detections, self.view_scale)
+        draw_monitor_state(scaled, self.monitor_state)
         self.label.setPixmap(scaled)
 
     def update_position(self) -> None:
@@ -335,6 +342,12 @@ class VideoWidget(QWidget):
     @Slot(int, object)
     def set_detections(self, frame_index: int, detections: list[Detection]) -> None:
         self.detections = detections
+        self.update_label()
+
+    def set_monitor_state(self, state: MonitorState) -> None:
+        if self.monitor_state == state:
+            return
+        self.monitor_state = state
         self.update_label()
 
     def resizeEvent(self, event) -> None:

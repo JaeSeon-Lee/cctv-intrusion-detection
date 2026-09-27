@@ -1,4 +1,4 @@
-"""영상 위 위험구역·사람 탐지 박스 그리기."""
+"""영상 위 위험구역·사람 탐지 박스·경보 상태 그리기."""
 
 from __future__ import annotations
 
@@ -6,10 +6,14 @@ from PySide6.QtCore import QPointF, QRectF, Qt
 from PySide6.QtGui import QColor, QPainter, QPen, QPixmap, QPolygonF
 
 from cctv_intrusion.detection import Detection
+from cctv_intrusion.intrusion import STATE_LABELS, MonitorState
 from cctv_intrusion.ui.styles import colors
 from cctv_intrusion.zone import Zone, format_level
 
 POINT_RADIUS = 5
+STATUS_MARGIN = 12
+STATUS_PAD_X = 14
+STATUS_PAD_Y = 8
 
 
 def to_view_polygon(points: list[tuple[float, float]], scale: float) -> QPolygonF:
@@ -30,6 +34,36 @@ def draw_zone_name(painter: QPainter, name: str, polygon: QPolygonF, color: QCol
     painter.drawRect(text_rect)
     painter.setPen(colors.ZONE_NAME_TEXT)
     painter.drawText(text_rect, Qt.AlignmentFlag.AlignCenter, name)
+
+
+def draw_monitor_state(pixmap: QPixmap, state: MonitorState) -> None:
+    """영상 우측 상단에 경보 상태 배지를 그린다."""
+    label = STATE_LABELS.get(state, str(state))
+    text = f"상태  {label}"
+    bg = colors.MONITOR_STATE_COLORS.get(state.value, colors.MONITOR_STATE_COLORS["idle"])
+
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    font = painter.font()
+    font.setPixelSize(18)
+    font.setBold(True)
+    painter.setFont(font)
+
+    metrics = painter.fontMetrics()
+    text_w = metrics.horizontalAdvance(text)
+    text_h = metrics.height()
+    box_w = text_w + STATUS_PAD_X * 2
+    box_h = text_h + STATUS_PAD_Y * 2
+    x = pixmap.width() - box_w - STATUS_MARGIN
+    y = STATUS_MARGIN
+    rect = QRectF(x, y, box_w, box_h)
+
+    painter.setPen(Qt.PenStyle.NoPen)
+    painter.setBrush(bg)
+    painter.drawRoundedRect(rect, 8, 8)
+    painter.setPen(colors.MONITOR_STATE_TEXT)
+    painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, text)
+    painter.end()
 
 
 def draw_zones(
