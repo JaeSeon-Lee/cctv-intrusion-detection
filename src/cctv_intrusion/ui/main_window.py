@@ -4,7 +4,7 @@ from PySide6.QtCore import Qt, Signal, Slot
 from PySide6.QtWidgets import QMainWindow, QMessageBox, QSplitter
 
 from cctv_intrusion.detection import Detection, PersonDetection
-from cctv_intrusion.intrusion import IntrusionMonitor, append_events
+from cctv_intrusion.intrusion import IntrusionMonitor, save_event_records
 from cctv_intrusion.ui.widget.file_tree import FileTree
 from cctv_intrusion.ui.widget.video_widget import VideoWidget
 from cctv_intrusion.ui.widget.zone_panel import ZonePanel
@@ -191,12 +191,12 @@ class MainWindow(QMainWindow):
         )
         if self.intrusion_monitor.new_events and self.video_path is not None:
             try:
-                append_events(self.intrusion_monitor.new_events, self.video_path)
+                save_event_records(self.intrusion_monitor.new_events, self.video_path)
             except OSError as error:
                 QMessageBox.warning(
                     self,
-                    "사건 CSV 저장 실패",
-                    f"침입 사건 CSV를 저장할 수 없습니다.\n\n{error}",
+                    "사건 저장 실패",
+                    f"침입 사건 클립/CSV를 저장할 수 없습니다.\n\n{error}",
                 )
         self.video_widget.set_detections(frame_index, detections)
         self.video_widget.set_monitor_state(state)

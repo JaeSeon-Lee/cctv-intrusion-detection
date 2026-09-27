@@ -1,3 +1,4 @@
+from .clip_export import export_event_clip, next_clip_path, save_event_records
 from .criteria import (
     ALERT_HOLD_SECONDS,
     EVENT_CLIP_AFTER_SEC,
@@ -29,7 +30,10 @@ __all__ = [
     "alert_seconds_for",
     "append_events",
     "events_csv_path",
+    "export_event_clip",
     "foot_point",
     "format_video_timestamp",
+    "next_clip_path",
     "point_in_zone",
+    "save_event_records",
 ]

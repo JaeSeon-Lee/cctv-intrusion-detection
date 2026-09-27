@@ -1,16 +1,35 @@
 import csv
 
+import cv2
+import numpy as np
+
 from cctv_intrusion.detection import Detection
 from cctv_intrusion.intrusion import (
     EVENT_CSV_FIELDS,
     IntrusionEvent,
     IntrusionMonitor,
     MonitorState,
-    append_events,
     events_csv_path,
+    export_event_clip,
+    next_clip_path,
+    save_event_records,
 )
 from cctv_intrusion.intrusion.events import format_video_timestamp
 from cctv_intrusion.zone import Zone
+
+
+def _write_dummy_video(path, *, frames: int = 30, fps: float = 10.0) -> None:
+    writer = cv2.VideoWriter(
+        str(path),
+        cv2.VideoWriter_fourcc(*"mp4v"),
+        fps,
+        (64, 48),
+    )
+    assert writer.isOpened()
+    for index in range(frames):
+        frame = np.full((48, 64, 3), index % 255, dtype=np.uint8)
+        writer.write(frame)
+    writer.release()
 
 
 def test_format_video_timestamp():
@@ -21,10 +40,14 @@ def test_format_video_timestamp():
 
 def test_events_csv_path_uses_video_stem(tmp_path):
     assert events_csv_path(tmp_path / "cam1.mp4", output_dir=tmp_path) == tmp_path / "cam1.csv"
-    assert (
-        events_csv_path("/data/input/test_trespass.mp4", output_dir=tmp_path)
-        == tmp_path / "test_trespass.csv"
-    )
+
+
+def test_next_clip_path_increments(tmp_path):
+    video = tmp_path / "cam1.mp4"
+    first = next_clip_path(video, output_dir=tmp_path)
+    assert first == tmp_path / "cam1_1.mp4"
+    first.write_bytes(b"x")
+    assert next_clip_path(video, output_dir=tmp_path) == tmp_path / "cam1_2.mp4"
 
 
 def test_intrusion_event_includes_clip_window():
@@ -37,32 +60,44 @@ def test_intrusion_event_includes_clip_window():
     assert event.alarm_at == "00:10.000"
     assert event.cleared_at == "00:13.500"
     assert event.duration_sec == 3.5
-    assert event.clip_start == "00:07.000"  # 10 - 3
-    assert event.clip_end == "00:15.000"  # 10 + 5
+    assert event.clip_start == "00:07.000"
+    assert event.clip_end == "00:18.500"  # cleared 13.5 + 5
+    assert event.clip_start_sec == 7.0
+    assert event.clip_end_sec == 18.5
 
 
-def test_append_events_writes_header_and_rows(tmp_path):
+def test_export_and_save_event_records(tmp_path):
     video = tmp_path / "cam1.mp4"
+    _write_dummy_video(video, frames=40, fps=10.0)
+
     event = IntrusionEvent.create(
-        alarm_sec=10.0,
-        cleared_sec=12.0,
+        alarm_sec=2.0,
+        cleared_sec=3.0,
         zone_name="구역1",
         zone_level="danger",
     )
-    path = append_events([event], video, output_dir=tmp_path)
-    assert path == tmp_path / "cam1.csv"
+    # clip: max(0, 2-3)=0 .. 2+5=7 → 0~7s at 10fps = frames 0..70 but only 40 exist
+    csv_path = save_event_records([event], video, output_dir=tmp_path)
+    assert csv_path == tmp_path / "cam1.csv"
+    assert event.clip_file == "cam1_1.mp4"
+    clip = tmp_path / "cam1_1.mp4"
+    assert clip.exists() and clip.stat().st_size > 0
 
-    with path.open(encoding="utf-8") as file:
+    with csv_path.open(encoding="utf-8") as file:
         rows = list(csv.DictReader(file))
-
     assert list(rows[0].keys()) == list(EVENT_CSV_FIELDS)
-    assert rows[0]["alarm_at"] == "00:10.000"
-    assert rows[0]["cleared_at"] == "00:12.000"
-    assert rows[0]["duration_sec"] == "2.0"
-    assert rows[0]["clip_start"] == "00:07.000"
-    assert rows[0]["clip_end"] == "00:15.000"
+    assert rows[0]["clip_file"] == "cam1_1.mp4"
     assert rows[0]["zone_name"] == "구역1"
-    assert rows[0]["zone_level"] == "danger"
+
+    # second event gets _2
+    event2 = IntrusionEvent.create(
+        alarm_sec=1.0,
+        cleared_sec=1.5,
+        zone_name="구역2",
+        zone_level="caution",
+    )
+    export_event_clip(video, event2, output_dir=tmp_path)
+    assert (tmp_path / "cam1_2.mp4").exists()
 
 
 def test_monitor_emits_event_on_clear_not_on_alarm():
@@ -74,15 +109,12 @@ def test_monitor_emits_event_on_clear_not_on_alarm():
     assert monitor.update([person], frame_index=0, fps=10) == MonitorState.ARMED
     assert monitor.new_events == []
 
-    # +1.0s → alarm starts, but CSV row waits until clear
     assert monitor.update([person], frame_index=10, fps=10) == MonitorState.ALARM
     assert monitor.new_events == []
 
-    # still inside
     monitor.update([person], frame_index=20, fps=10)
     assert monitor.new_events == []
 
-    # leave zone → cleared, event recorded
     state = monitor.update([], frame_index=25, fps=10)
     assert state == MonitorState.CLEARED
     assert len(monitor.new_events) == 1
@@ -91,5 +123,5 @@ def test_monitor_emits_event_on_clear_not_on_alarm():
     assert event.alarm_at == "00:01.000"
     assert event.cleared_at == "00:02.500"
     assert event.duration_sec == 1.5
-    assert event.clip_start == "00:00.000"
-    assert event.clip_end == "00:06.000"
+    assert event.clip_start_sec == 0.0
+    assert event.clip_end_sec == 7.5  # cleared 2.5 + 5

@@ -14,6 +14,7 @@ POINT_RADIUS = 5
 STATUS_MARGIN = 12
 STATUS_PAD_X = 14
 STATUS_PAD_Y = 8
+ALARM_FRAME_WIDTH = 8
 
 
 def to_view_polygon(points: list[tuple[float, float]], scale: float) -> QPolygonF:
@@ -36,8 +37,26 @@ def draw_zone_name(painter: QPainter, name: str, polygon: QPolygonF, color: QCol
     painter.drawText(text_rect, Qt.AlignmentFlag.AlignCenter, name)
 
 
+def draw_alarm_frame(pixmap: QPixmap) -> None:
+    """경보 중 영상 테두리를 빨간색으로 그린다."""
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    pen = QPen(colors.ALARM_FRAME, ALARM_FRAME_WIDTH)
+    pen.setJoinStyle(Qt.PenJoinStyle.MiterJoin)
+    painter.setPen(pen)
+    painter.setBrush(Qt.BrushStyle.NoBrush)
+    inset = ALARM_FRAME_WIDTH / 2
+    painter.drawRect(
+        QRectF(inset, inset, pixmap.width() - ALARM_FRAME_WIDTH, pixmap.height() - ALARM_FRAME_WIDTH)
+    )
+    painter.end()
+
+
 def draw_monitor_state(pixmap: QPixmap, state: MonitorState) -> None:
-    """영상 우측 상단에 경보 상태 배지를 그린다."""
+    """영상 우측 상단에 경보 상태 배지를 그린다. 경보 중이면 빨간 테두리도 표시."""
+    if state == MonitorState.ALARM:
+        draw_alarm_frame(pixmap)
+
     label = STATE_LABELS.get(state, str(state))
     text = f"상태  {label}"
     bg = colors.MONITOR_STATE_COLORS.get(state.value, colors.MONITOR_STATE_COLORS["idle"])

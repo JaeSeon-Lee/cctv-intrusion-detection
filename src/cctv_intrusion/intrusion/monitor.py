@@ -16,7 +16,7 @@ from cctv_intrusion.zone import Zone
 
 STATE_LABELS: dict[MonitorState, str] = {
     MonitorState.IDLE: "대기",
-    MonitorState.ARMED: "감지",
+    MonitorState.ARMED: "감지 중",
     MonitorState.ALARM: "경보",
     MonitorState.CLEARED: "해제",
 }

@@ -2,9 +2,7 @@
 
 동영상 stem 과 같은 이름으로 OUTPUT_DIR 에 저장한다.
 예: data/input/cam1.mp4 → data/output/cam1.csv
-
-경보가 해제될 때 한 줄 기록:
-  경보 시각 · 해제 시각 · 지속 · 클립 구간(−3s/+5s) · 구역
+클립: data/output/cam1_1.mp4, cam1_2.mp4, ...
 """
 
 from __future__ import annotations
@@ -45,6 +43,9 @@ class IntrusionEvent:
     clip_end: str
     zone_name: str
     zone_level: str
+    clip_start_sec: float
+    clip_end_sec: float
+    clip_file: str = ""
 
     @classmethod
     def create(
@@ -57,16 +58,18 @@ class IntrusionEvent:
     ) -> IntrusionEvent:
         alarm_sec = max(0.0, alarm_sec)
         cleared_sec = max(alarm_sec, cleared_sec)
-        clip_start = max(0.0, alarm_sec - EVENT_CLIP_BEFORE_SEC)
-        clip_end = alarm_sec + EVENT_CLIP_AFTER_SEC
+        clip_start_sec = max(0.0, alarm_sec - EVENT_CLIP_BEFORE_SEC)
+        clip_end_sec = cleared_sec + EVENT_CLIP_AFTER_SEC
         return cls(
             alarm_at=format_video_timestamp(alarm_sec),
             cleared_at=format_video_timestamp(cleared_sec),
             duration_sec=round(cleared_sec - alarm_sec, 2),
-            clip_start=format_video_timestamp(clip_start),
-            clip_end=format_video_timestamp(clip_end),
+            clip_start=format_video_timestamp(clip_start_sec),
+            clip_end=format_video_timestamp(clip_end_sec),
             zone_name=zone_name,
             zone_level=zone_level,
+            clip_start_sec=clip_start_sec,
+            clip_end_sec=clip_end_sec,
         )
 
     def as_row(self) -> dict[str, str | float]:
@@ -76,6 +79,7 @@ class IntrusionEvent:
             "duration_sec": self.duration_sec,
             "clip_start": self.clip_start,
             "clip_end": self.clip_end,
+            "clip_file": self.clip_file,
             "zone_name": self.zone_name,
             "zone_level": self.zone_level,
         }

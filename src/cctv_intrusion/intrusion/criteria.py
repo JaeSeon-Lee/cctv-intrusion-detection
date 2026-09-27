@@ -25,7 +25,7 @@ class MonitorState(StrEnum):
 # 등급 id → 경보까지 필요한 구역 내 체류 시간(초)
 ALERT_HOLD_SECONDS: dict[str, float] = {level.id: level.alert_seconds for level in ZONE_LEVELS}
 
-# 사건 영상: 침입(경보) 시점 기준 이전/이후
+# 사건 영상: 경보 이전 3초 ~ 해제 이후 5초
 EVENT_CLIP_BEFORE_SEC = 3.0
 EVENT_CLIP_AFTER_SEC = 5.0
 
@@ -35,7 +35,8 @@ EVENT_CSV_FIELDS = (
     "cleared_at",  # 경보 해제 시각
     "duration_sec",  # 경보~해제 지속(초)
     "clip_start",  # 클립 시작 = alarm_at - 3초
-    "clip_end",  # 클립 끝 = alarm_at + 5초
+    "clip_end",  # 클립 끝 = cleared_at + 5초
+    "clip_file",  # OUTPUT_DIR 클립 파일명 (stem_N.mp4)
     "zone_name",
     "zone_level",
 )
