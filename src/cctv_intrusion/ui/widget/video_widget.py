@@ -1,6 +1,6 @@
 from typing import override
 
-from PySide6.QtCore import QPointF, Qt, QTimer, Signal, Slot
+from PySide6.QtCore import QPointF, QRectF, Qt, QTimer, Signal, Slot
 from PySide6.QtGui import (
     QColor,
     QImage,
@@ -14,6 +14,7 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import QLabel, QMessageBox, QSizePolicy, QVBoxLayout, QWidget
 
+from cctv_intrusion.detection import Detection
 from cctv_intrusion.ui.styles import colors, load_qss
 from cctv_intrusion.ui.widget.control_bar import ControlBar
 from cctv_intrusion.video import VideoRender
@@ -88,6 +89,8 @@ class VideoWidget(QWidget):
         self.drawing = False  # True면 영상 클릭으로 꼭짓점을 찍는 중 (위험지역 편집 모드)
         self.drawing_points = []  # 편집 중에 찍은 꼭짓점들 (원본 프레임 좌표)
         self.dragging_point = -1  # 드래그로 옮기는 중인 꼭짓점 번호 (없으면 -1)
+        # 사람 탐지 결과 (원본 프레임 좌표). 추론이 끝날 때마다 바뀌고, 다음 결과가 올 때까지 계속 그린다
+        self.detections: list[Detection] = []
         # 화면에 그린 이미지의 배율과 위치. 클릭 위치 → 원본 프레임 좌표 변환에 사용
         self.view_scale = 1.0
         self.view_offset_x = 0.0
@@ -191,6 +194,7 @@ class VideoWidget(QWidget):
         self.frame_count = 0
         self.at_end = False
         self.current_pixmap = None
+        self.detections = []
         self.label.clear()
         self.update_control_state()
 
@@ -337,8 +341,9 @@ class VideoWidget(QWidget):
         self.view_offset_x = (self.label.width() - scaled.width()) / 2
         self.view_offset_y = (self.label.height() - scaled.height()) / 2
 
-        # 위험구역은 축소된 화면 이미지 위에 그린다 (원본에 그리면 작은 창에서 선·글자가 뭉개짐)
+        # 위험구역·사람 박스는 축소된 화면 이미지 위에 그린다 (원본에 그리면 작은 창에서 선·글자가 뭉개짐)
         self.draw_zones(scaled)
+        self.draw_detections(scaled)
         self.label.setPixmap(scaled)
 
     def update_position(self):
@@ -507,6 +512,34 @@ class VideoWidget(QWidget):
         painter.drawRect(text_rect)
         painter.setPen(colors.ZONE_NAME_TEXT)
         painter.drawText(text_rect, Qt.AlignmentFlag.AlignCenter, name)
+
+    # ------------------------------------------------------------
+    # 사람 탐지 박스 표시
+    # ------------------------------------------------------------
+    @Slot(int, object)
+    def set_detections(self, frame_index: int, detections: list[Detection]) -> None:
+        # 탐지 결과가 도착했을 때 호출. 일시정지 중이어도 바로 다시 그린다.
+        # 추론이 끝나는 사이 영상이 조금 더 진행되므로 결과는 현재 화면보다 1~2프레임 늦을 수 있다.
+        self.detections = detections
+        self.update_label()
+
+    def draw_detections(self, pixmap: QPixmap) -> None:
+        if not self.detections:
+            return
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setPen(QPen(colors.PERSON_BOX, 2))
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        for detection in self.detections:
+            painter.drawRect(
+                QRectF(
+                    detection.x1 * self.view_scale,
+                    detection.y1 * self.view_scale,
+                    (detection.x2 - detection.x1) * self.view_scale,
+                    (detection.y2 - detection.y1) * self.view_scale,
+                )
+            )
+        painter.end()
 
     def to_view_polygon(self, points):
         # 원본 프레임 좌표 목록 → 축소된 화면 이미지 좌표의 QPolygonF

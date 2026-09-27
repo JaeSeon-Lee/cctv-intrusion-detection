@@ -1,8 +1,27 @@
+from typing import override
+
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QKeySequence, QShortcut
+from PySide6.QtGui import QKeySequence, QMouseEvent, QShortcut
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QListWidget, QPushButton, QVBoxLayout, QWidget
 
 from cctv_intrusion.ui.styles import load_qss
+from cctv_intrusion.zone import next_zone_number
+
+
+class ZoneList(QListWidget):
+    """선택을 풀 수 있는 위험구역 리스트
+
+    QListWidget은 한 번 선택하면 마우스로 선택을 풀 방법이 없어서,
+    빈 공간을 누르거나 이미 선택된 항목을 다시 누르면 선택을 해제하도록 덮어쓴다.
+    """
+
+    @override
+    def mousePressEvent(self, event: QMouseEvent) -> None:
+        item = self.itemAt(event.position().toPoint())
+        if item is None or item.isSelected():
+            self.clearSelection()
+            return
+        super().mousePressEvent(event)
 
 
 class ZonePanel(QWidget):
@@ -34,9 +53,9 @@ class ZonePanel(QWidget):
         self.edit_label.setWordWrap(True)  # 패널 폭이 좁으므로 자동 줄바꿈
 
         title = QLabel("위험구역 목록")
-        hint = QLabel("Del: 선택한 구역 삭제")
+        hint = QLabel("Del: 선택한 구역 삭제\nEsc / 빈 곳 클릭: 선택 해제")
 
-        self.list = QListWidget()
+        self.list = ZoneList()
 
         # 키보드 포커스를 가져가지 않게 해서 Space, ←/→ 같은 재생 단축키와 겹치지 않게 한다.
         # (리스트는 포커스가 없어도 마우스 클릭으로 선택할 수 있다)
@@ -77,6 +96,8 @@ class ZonePanel(QWidget):
 
         # Del 키: 창 안 어디에 포커스가 있어도 동작
         QShortcut(QKeySequence(Qt.Key.Key_Delete), self).activated.connect(self.on_delete_key)
+        # Esc 키: 선택 해제
+        QShortcut(QKeySequence(Qt.Key.Key_Escape), self).activated.connect(self.list.clearSelection)
 
         self.set_edit_mode(False)
 
@@ -101,6 +122,15 @@ class ZonePanel(QWidget):
         self.list.addItem(name)
         self.zones_changed.emit(self.zones)
         return name
+
+    def set_zones(self, zones: list[dict]) -> None:
+        # 영상을 새로 열 때 그 영상의 구역 목록(파일에서 읽은 것)으로 통째로 바꾼다
+        self.zones = [dict(zone) for zone in zones]
+        self.next_number = next_zone_number(self.zones)
+        self.list.clear()
+        self.list.addItems([zone["name"] for zone in self.zones])
+        self.zones_changed.emit(self.zones)
+        self.selection_changed.emit(self.selected_index())
 
     def remove_zone(self, index):
         if not 0 <= index < len(self.zones):

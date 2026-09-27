@@ -28,6 +28,9 @@ venv/
 data/output/*
 !data/output/.gitkeep
 
+# YOLO 모델 파일: 최초 실행 때 자동으로 내려받으므로 커밋하지 않음
+models/
+
 # OS
 .DS_Store
 Thumbs.db
