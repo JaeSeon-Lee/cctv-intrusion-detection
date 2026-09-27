@@ -41,7 +41,7 @@
           412
         ]
       ],
-      "level": "danger"
+      "level": "detect"
     },
     {
       "name": "구역 4",
@@ -63,7 +63,7 @@
           286
         ]
       ],
-      "level": "caution"
+      "level": "danger"
     },
     {
       "name": "구역 5",

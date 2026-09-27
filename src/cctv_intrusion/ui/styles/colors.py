@@ -4,13 +4,14 @@ from PySide6.QtGui import QColor
 from cctv_intrusion.zone.levels import get_level
 
 _ZONE_LEVEL_COLORS = {
-    "caution": QColor(234, 179, 8),
+    # 1 감지 → 2 주의 → 3 위험 (등급↑ = 색↑)
+    "detect": QColor(234, 179, 8),
+    "caution": QColor(245, 158, 11),
     "danger": QColor(220, 38, 38),
-    "detect": QColor(185, 28, 28),
     # 레거시 id (json에 남아 있을 수 있음)
     "warning": QColor(245, 158, 11),
-    "restricted": QColor(185, 28, 28),
-    "critical": QColor(127, 29, 29),
+    "restricted": QColor(234, 179, 8),
+    "critical": QColor(185, 28, 28),
 }
 
 ZONE_SELECTED = QColor(251, 191, 36)

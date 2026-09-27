@@ -13,9 +13,10 @@ def test_foot_point_is_box_bottom_center():
 
 
 def test_alert_hold_seconds_by_level():
-    assert ALERT_HOLD_SECONDS == {"caution": 3.0, "danger": 2.0, "detect": 1.0}
-    assert alert_seconds_for("주의") == 3.0
-    assert alert_seconds_for("detect") == 1.0
+    assert ALERT_HOLD_SECONDS == {"detect": 3.0, "caution": 2.0, "danger": 1.0}
+    assert alert_seconds_for("주의") == 2.0
+    assert alert_seconds_for("detect") == 3.0
+    assert alert_seconds_for("위험") == 1.0
 
 
 def test_event_clip_window():

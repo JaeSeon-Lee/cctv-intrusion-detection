@@ -29,8 +29,16 @@ ALERT_HOLD_SECONDS: dict[str, float] = {level.id: level.alert_seconds for level 
 EVENT_CLIP_BEFORE_SEC = 3.0
 EVENT_CLIP_AFTER_SEC = 5.0
 
-# 사건 CSV에 남길 필드(구현 시 컬럼명)
-EVENT_CSV_FIELDS = ("timestamp", "duration_sec", "zone_name", "zone_level")
+# 사건 CSV 컬럼 (영상 시각 기준, 해제 시점에 한 줄 기록)
+EVENT_CSV_FIELDS = (
+    "alarm_at",  # 경보 확정 시각
+    "cleared_at",  # 경보 해제 시각
+    "duration_sec",  # 경보~해제 지속(초)
+    "clip_start",  # 클립 시작 = alarm_at - 3초
+    "clip_end",  # 클립 끝 = alarm_at + 5초
+    "zone_name",
+    "zone_level",
+)
 
 
 def foot_point(x1: float, y1: float, x2: float, y2: float) -> tuple[float, float]:

@@ -1,6 +1,7 @@
 """위험구역 침입·경보 상태 추적.
 
 발 위치가 구역 안에 있는 시간을 누적해 MonitorState 를 갱신한다.
+경보가 난 뒤 구역에서 벗어나 해제되면 IntrusionEvent 를 남긴다.
 """
 
 from __future__ import annotations
@@ -10,6 +11,7 @@ import numpy as np
 
 from cctv_intrusion.detection import Detection
 from cctv_intrusion.intrusion.criteria import MonitorState, alert_seconds_for, foot_point
+from cctv_intrusion.intrusion.events import IntrusionEvent
 from cctv_intrusion.zone import Zone
 
 STATE_LABELS: dict[MonitorState, str] = {
@@ -33,21 +35,31 @@ class IntrusionMonitor:
     def __init__(self) -> None:
         self.zones: list[Zone] = []
         self.state = MonitorState.IDLE
+        self.new_events: list[IntrusionEvent] = []
         self._dwell_sec: dict[str, float] = {}
+        # 경보 중인 구역 → (경보 확정 시각(초), level)
+        self._active_alarms: dict[str, tuple[float, str]] = {}
         self._last_frame_index: int | None = None
 
     def reset(self) -> None:
         self.zones = []
         self.state = MonitorState.IDLE
+        self.new_events = []
         self._dwell_sec.clear()
+        self._active_alarms.clear()
         self._last_frame_index = None
 
     def set_zones(self, zones: list[Zone]) -> MonitorState:
         self.zones = list(zones)
-        self._dwell_sec = {zone.name: self._dwell_sec.get(zone.name, 0.0) for zone in self.zones}
+        names = {zone.name for zone in self.zones}
+        self._dwell_sec = {name: self._dwell_sec.get(name, 0.0) for name in names}
+        self._active_alarms = {
+            name: value for name, value in self._active_alarms.items() if name in names
+        }
         if not self.zones:
             self.state = MonitorState.IDLE
             self._dwell_sec.clear()
+            self._active_alarms.clear()
         elif self.state in (MonitorState.IDLE, MonitorState.CLEARED):
             self.state = MonitorState.ARMED
         return self.state
@@ -58,9 +70,12 @@ class IntrusionMonitor:
         frame_index: int,
         fps: float,
     ) -> MonitorState:
+        self.new_events = []
+
         if not self.zones:
             self.state = MonitorState.IDLE
             self._dwell_sec.clear()
+            self._active_alarms.clear()
             self._last_frame_index = frame_index
             return self.state
 
@@ -78,13 +93,28 @@ class IntrusionMonitor:
                     inside_names.add(zone.name)
 
         alarmed = False
+        video_sec = frame_index / fps if fps > 0 else 0.0
         for zone in self.zones:
             if zone.name in inside_names:
                 self._dwell_sec[zone.name] = self._dwell_sec.get(zone.name, 0.0) + dt
-                if self._dwell_sec[zone.name] >= alert_seconds_for(zone.level):
+                dwell = self._dwell_sec[zone.name]
+                if dwell >= alert_seconds_for(zone.level):
                     alarmed = True
+                    if zone.name not in self._active_alarms:
+                        self._active_alarms[zone.name] = (video_sec, str(zone.level))
             else:
                 self._dwell_sec[zone.name] = 0.0
+                active = self._active_alarms.pop(zone.name, None)
+                if active is not None:
+                    alarm_sec, zone_level = active
+                    self.new_events.append(
+                        IntrusionEvent.create(
+                            alarm_sec=alarm_sec,
+                            cleared_sec=video_sec,
+                            zone_name=zone.name,
+                            zone_level=zone_level,
+                        )
+                    )
 
         if alarmed:
             self.state = MonitorState.ALARM
