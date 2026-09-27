@@ -31,9 +31,11 @@ python -m cctv_intrusion              # 또는 cctv-intrusion
 
 ### 사람 탐지 GPU 사용 (선택)
 
-`requirements.txt` 는 용량이 작은 **CPU 전용 torch**(약 200MB)를 설치한다. CPU에서도 yolo11s는 프레임당 약 70ms라, 재생은 그대로 하면서 박스는 초당 10번 이상 갱신된다.
+`requirements.txt` 는 용량이 작은 **CPU 전용 torch**(약 200MB)를 설치한다.
+Apple Silicon(MPS)이나 NVIDIA CUDA가 있으면 코드가 자동으로 그쪽을 쓰고, 추론 해상도(`imgsz=1280`)로 작은 사람 탐지를 보강한다.
+CPU만 있으면 프레임당 약 200ms 안팎이라 박스는 재생보다 덜 자주 갱신될 수 있다.
 NVIDIA GPU를 쓰고 싶으면 [PyTorch 설치 페이지](https://pytorch.org/get-started/locally/)에서 CUDA 버전 설치 명령을 확인해
-같은 버전(`torch==2.14.0`)으로 다시 설치한다. (CUDA 라이브러리 포함 수 GB) 코드는 GPU가 있으면 자동으로 GPU를 사용한다.
+같은 버전(`torch==2.14.0`)으로 다시 설치한다.
 
 ## 프로젝트 구조
 
