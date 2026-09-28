@@ -68,6 +68,7 @@ class VideoWidget(QWidget):
         self.label.setStyleSheet(load_qss("video_widget"))
 
         self.controls = ControlBar()
+        self.playback_speed = 1.0
         self.controls.play_button.clicked.connect(self.toggle_play)
         self.controls.prev_button.clicked.connect(self.seek_backward)
         self.controls.next_button.clicked.connect(self.seek_forward)
@@ -77,6 +78,7 @@ class VideoWidget(QWidget):
         self.controls.slider.sliderPressed.connect(self.on_slider_pressed)
         self.controls.slider.sliderReleased.connect(self.on_slider_released)
         self.controls.slider.valueChanged.connect(self.go_to_frame)
+        self.controls.speed_combo.currentIndexChanged.connect(self.on_speed_changed)
 
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.next_frame)
@@ -192,8 +194,20 @@ class VideoWidget(QWidget):
             self.render.seek_frame(0)
             self.frame_index = -1
             self.at_end = False
-        self.timer.start(int(1000 / self.fps))
+        self.timer.start(self._frame_interval_ms())
         self.controls.set_playing(True)
+
+    def _frame_interval_ms(self) -> int:
+        rate = self.fps * (1.0 if self.live else self.playback_speed)
+        return max(1, int(1000 / max(rate, 0.1)))
+
+    def set_playback_speed(self, speed: float) -> None:
+        self.playback_speed = max(0.25, min(float(speed), 4.0))
+        if self.is_playing() and not self.live:
+            self.timer.start(self._frame_interval_ms())
+
+    def on_speed_changed(self) -> None:
+        self.set_playback_speed(self.controls.playback_speed())
 
     def pause(self) -> None:
         if self.live and self.is_playing():

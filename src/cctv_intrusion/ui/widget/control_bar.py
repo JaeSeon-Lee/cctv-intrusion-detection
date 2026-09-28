@@ -1,17 +1,26 @@
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QSlider, QWidget
+from PySide6.QtWidgets import (
+    QComboBox,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QSlider,
+    QWidget,
+)
 
 from cctv_intrusion.ui.styles import load_qss
 
+SPEED_OPTIONS = (
+    (0.5, "0.5×"),
+    (1.0, "1×"),
+    (1.5, "1.5×"),
+    (2.0, "2×"),
+    (4.0, "4×"),
+)
+
 
 class ControlBar(QWidget):
-    """재생 컨트롤 (5초 뒤로 / 재생·일시정지 / 5초 앞으로 / 탐색 슬라이더 / 시간)
-
-    실시간(웹캠)일 때는 탐색할 수 없으므로 재생·일시정지와 경과 시간만 보인다.
-
-    버튼과 슬라이더는 화면만 담당하고,
-    실제 동작은 VideoWidget에서 clicked, valueChanged 등의 신호에 연결해서 처리한다.
-    """
+    """재생 컨트롤 (뒤로 / 재생 / 앞으로 / 배속 / 슬라이더 / 시간)"""
 
     def __init__(self):
         super().__init__()
@@ -22,6 +31,12 @@ class ControlBar(QWidget):
         self.play_button = QPushButton("재생")
         self.next_button = QPushButton("+5초")
 
+        self.speed_combo = QComboBox()
+        self.speed_combo.setObjectName("speedCombo")
+        for value, label in SPEED_OPTIONS:
+            self.speed_combo.addItem(label, value)
+        self.speed_combo.setCurrentIndex(1)  # 1×
+
         self.slider = QSlider(Qt.Orientation.Horizontal)
         self.slider.setRange(0, 0)
 
@@ -29,9 +44,13 @@ class ControlBar(QWidget):
         self.play_button.setObjectName("playButton")
         self.time_label.setObjectName("timeLabel")
 
-        # NoFocus: 클릭해도 키보드 포커스를 가져가지 않게 한다.
-        # 포커스가 버튼에 있으면 Space 키가 버튼 클릭으로 처리되어 단축키와 겹칠 수 있기 때문.
-        for widget in (self.prev_button, self.play_button, self.next_button, self.slider):
+        for widget in (
+            self.prev_button,
+            self.play_button,
+            self.next_button,
+            self.speed_combo,
+            self.slider,
+        ):
             widget.setFocusPolicy(Qt.FocusPolicy.NoFocus)
 
         self.setStyleSheet(load_qss("control_bar"))
@@ -42,8 +61,9 @@ class ControlBar(QWidget):
         layout.addWidget(self.prev_button)
         layout.addWidget(self.play_button)
         layout.addWidget(self.next_button)
-        layout.addWidget(self.slider, 1)  # 1: 남는 가로 공간을 슬라이더가 차지
-        layout.addStretch(0)  # 실시간이라 슬라이더를 숨겼을 때 시간을 오른쪽 끝에 둔다
+        layout.addWidget(self.speed_combo)
+        layout.addWidget(self.slider, 1)
+        layout.addStretch(0)
         layout.addWidget(self.time_label)
         self.setLayout(layout)
 
@@ -52,7 +72,7 @@ class ControlBar(QWidget):
 
     def set_live(self, live):
         self.live = live
-        for widget in (self.prev_button, self.next_button, self.slider):
+        for widget in (self.prev_button, self.next_button, self.slider, self.speed_combo):
             widget.setVisible(not live)
 
     def set_time(self, current_sec, total_sec):
@@ -60,6 +80,10 @@ class ControlBar(QWidget):
             self.time_label.setText(f"● LIVE  {format_time(current_sec)}")
             return
         self.time_label.setText(f"{format_time(current_sec)} / {format_time(total_sec)}")
+
+    def playback_speed(self) -> float:
+        data = self.speed_combo.currentData()
+        return float(data) if data is not None else 1.0
 
 
 def format_time(seconds):
