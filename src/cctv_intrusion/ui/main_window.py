@@ -130,9 +130,6 @@ class MainWindow(QMainWindow):
     def selected_video(self):
         return self.camera_grid.video(self.camera_grid.selected_index)
 
-    def selected_monitor(self) -> IntrusionMonitor:
-        return self.monitors[self.camera_grid.selected_index]
-
     @Slot(str)
     def on_file_selected(self, path: str) -> None:
         if self.editing:
