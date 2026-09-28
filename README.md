@@ -42,6 +42,14 @@ python -m cctv_intrusion              # 또는 cctv-intrusion
     (웹캠·파일 캠 동일. 해제 후 5초 안 재경보면 **같은 구간을 늘려** 한 파일로 자름)
   - 사건 CSV: `events.csv` (경보가 **해제될 때** 한 줄 추가)
 
+앱을 **종료한 뒤 다시 실행**할 때는 `data/recordings/` 아래 `cam1`~`cam4` 폴더를 지우는 것을 권장한다.  
+상시 `.ts`가 계속 쌓이므로, 데모·테스트 전에 비우면 용량·다시보기 목록이 깔끔하다.
+
+```bash
+# 예: recordings 캠 폴더만 삭제 (앱이 꺼진 상태에서)
+rm -rf data/recordings/cam1 data/recordings/cam2 data/recordings/cam3 data/recordings/cam4
+```
+
 #### 침입 사건 CSV (`data/recordings/camN/events.csv`)
 
 | 컬럼 | 설명 |
