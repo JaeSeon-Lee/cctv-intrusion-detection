@@ -38,6 +38,8 @@ class VideoWidget(QWidget):
         super().__init__()
 
         self.compact = compact
+        # CCTV 칸(compact): 파일도 관제처럼 반복 재생. 다시보기는 한 번만.
+        self.loop = compact
         self.render: VideoRender | CameraCapture | None = None
         self.live = False
         self.live_elapsed_sec = 0.0  # 일시정지 전까지 흐른 시간
@@ -242,11 +244,17 @@ class VideoWidget(QWidget):
             self.handle_frame(frame)
             return
         if not ret:
-            # 구역 편집 중이면 처음으로 돌려 계속 재생 (CCTV처럼)
-            if self.drawing:
+            if self.loop or self.drawing:
                 self.render.seek_frame(0)
-                self.frame_index = -1
+                ret, frame = self.render.read()
+                if not ret:
+                    self.at_end = True
+                    self.pause(force=True)
+                    return
+                # 시각(frame_index)은 계속 증가 — 침입 체류·클립 타임라인 유지
+                self.frame_index += 1
                 self.at_end = False
+                self.handle_frame(frame)
                 return
             self.at_end = True
             self.pause()

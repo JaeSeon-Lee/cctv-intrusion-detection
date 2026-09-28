@@ -12,7 +12,6 @@ from cctv_intrusion.intrusion import (
     IntrusionMonitor,
     LiveRecorder,
     MonitorState,
-    save_event_records,
 )
 from cctv_intrusion.paths import OUTPUT_DIR, RECORDINGS_DIR, SCREEN_COUNT, screen_recordings_dir
 from cctv_intrusion.ui.widget.camera_grid import CameraGrid
@@ -164,10 +163,10 @@ class MainWindow(QMainWindow):
         )
         video.set_monitor_state(state)
 
-        if video.live:
-            self.live_recorders[screen_index] = LiveRecorder(
-                output_dir=screen_recordings_dir(screen_index)
-            )
+        # 파일 캠도 CCTV(웹캠)와 동일: 실시간 버퍼 방식 침입 클립 (해제 후 5초 안 재경보면 이어쓰기)
+        self.live_recorders[screen_index] = LiveRecorder(
+            output_dir=screen_recordings_dir(screen_index)
+        )
 
         self.start_continuous_recording(screen_index)
 
@@ -327,20 +326,6 @@ class MainWindow(QMainWindow):
                 )
             except OSError as error:
                 self.on_live_record_failed(screen_index, error)
-        elif monitor.new_events and video.source_path:
-            try:
-                # 침입 클립은 MP4 로 recordings/ 에 저장 (상시 .ts 와 구분)
-                save_event_records(
-                    monitor.new_events,
-                    video.source_path,
-                    output_dir=screen_recordings_dir(screen_index),
-                )
-            except OSError as error:
-                QMessageBox.warning(
-                    self,
-                    "사건 저장 실패",
-                    f"침입 사건 클립/CSV를 저장할 수 없습니다.\n\n{error}",
-                )
 
         video.set_detections(frame_index, detections)
         video.set_monitor_state(state)

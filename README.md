@@ -31,12 +31,29 @@ python -m cctv_intrusion              # 또는 cctv-intrusion
 
 ### CCTV 모니터
 
-상단 탭: **CCTV** / **기록**(준비 중)
+상단 탭: **CCTV** / **다시보기**
 
 - **CCTV**: 2×2 화면. CAM 1은 웹캠 자동 연결, CAM 2~4는 좌측 `data/cctv` 목록에서 영상을 골라 재생한다.
   - 화면을 클릭해 선택한 뒤 파일을 누르면 그 화면에 할당된다.
   - 위험구역은 **화면 단위**로 `data/cctv/screens/screen_N.json` 에 저장된다 (영상을 바꿔도 유지).
-- 침입 사건: 파일 화면은 `data/output/{영상이름}.csv` / `{영상이름}_N.mp4`, 웹캠은 `live_YYYYmmdd_HHMMSS.*`.
+- 상시 녹화·침입 클립·CSV 는 캠별 폴더 `data/recordings/camN/` 에 저장된다.
+  - 상시 녹화: `{YYYYmmdd_HHMMSS}.ts` (화면 오버레이 포함)
+  - 침입 클립: `live_YYYYmmdd_HHMMSS.mp4` (경보 전 3초 ~ 해제 후 5초.  
+    웹캠·파일 캠 모두 동일 — 해제 후 5초 안에 다시 경보가 나면 **같은 파일에 이어 씀**)
+  - 사건 CSV: `events.csv` (경보가 **해제될 때** 한 줄 추가)
+
+#### 침입 사건 CSV (`data/recordings/camN/events.csv`)
+
+| 컬럼 | 설명 |
+|---|---|
+| `alarm_at` | 경보 확정 시각 (영상 재생 시각, `MM:SS.mmm`) |
+| `cleared_at` | 경보 해제 시각 |
+| `duration_sec` | 경보~해제 지속 시간(초) |
+| `clip_start` | 클립 시작 = `alarm_at` − 3초 |
+| `clip_end` | 클립 끝 = `cleared_at` + 5초 |
+| `clip_file` | 같은 폴더의 침입 클립 파일명 |
+| `zone_name` | 침입한 위험구역 이름 |
+| `zone_level` | 구역 등급 (`detect` / `caution` / `danger`) |
 
 macOS 는 처음 연결할 때 터미널(또는 IDE)에 카메라 권한을 허용해야 한다. WSL2 는 기본 설정으로는 웹캠을 쓸 수 없다.
 
@@ -59,7 +76,7 @@ CUDA 버전이 다르면 [PyTorch 설치 페이지](https://pytorch.org/get-star
 
 ```
 ├── pyproject.toml / requirements.txt / environment.yml
-├── data/cctv · data/cctv/screens · data/output
+├── data/cctv · data/cctv/screens · data/recordings/camN
 ├── models/                     # YOLO 가중치 (자동 다운로드)
 ├── src/cctv_intrusion/
 │   ├── app.py / __main__.py    # 진입점
