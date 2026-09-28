@@ -29,37 +29,43 @@ python -m cctv_intrusion              # 또는 cctv-intrusion
 - 테스트: `pytest`
 - 린트·포맷: `ruff check --fix . && ruff format .`
 
-### 실시간 영상 / 저장된 동영상
+### CCTV 모니터
 
-왼쪽 탭에서 입력을 고른다. 위험구역 설정·경보는 두 탭이 같다.
+상단 탭: **CCTV** / **기록**(준비 중)
 
-- **실시간 영상**: 카메라 번호(내장 카메라는 보통 0번)를 고르고 [연결]한다.
-  위험구역은 `data/input/camera_0.json` 처럼 카메라 번호별로 저장된다 (PC마다 달라 커밋하지 않음).
-  침입이 감지되면 경보 3초 전 ~ 해제 5초 후를 `data/output/live_YYYYmmdd_HHMMSS.mp4` 로 녹화하고,
-  같은 이름의 `.csv` 에 사건을 기록한다 (CSV 시각은 클립 안의 시각).
-- **저장된 동영상**: `data/` 아래 영상 파일을 골라 재생한다. 사건은 `data/output/{영상이름}_N.mp4` / `{영상이름}.csv`.
+- **CCTV**: 2×2 화면. CAM 1은 웹캠 자동 연결, CAM 2~4는 좌측 `data/cctv` 목록에서 영상을 골라 재생한다.
+  - 화면을 클릭해 선택한 뒤 파일을 누르면 그 화면에 할당된다.
+  - 위험구역은 **화면 단위**로 `data/cctv/screens/screen_N.json` 에 저장된다 (영상을 바꿔도 유지).
+- 침입 사건: 파일 화면은 `data/output/{영상이름}.csv` / `{영상이름}_N.mp4`, 웹캠은 `live_YYYYmmdd_HHMMSS.*`.
 
 macOS 는 처음 연결할 때 터미널(또는 IDE)에 카메라 권한을 허용해야 한다. WSL2 는 기본 설정으로는 웹캠을 쓸 수 없다.
 
-### 사람 탐지 GPU 사용 (선택)
+### 사람 탐지 GPU (Mac / Windows)
 
-`requirements.txt` 는 용량이 작은 **CPU 전용 torch**(약 200MB)를 설치한다.
-Apple Silicon(MPS)이나 NVIDIA CUDA가 있으면 코드가 자동으로 그쪽을 쓰고, 추론 해상도(`imgsz=1280`)로 작은 사람 탐지를 보강한다.
-CPU만 있으면 프레임당 약 200ms 안팎이라 박스는 재생보다 덜 자주 갱신될 수 있다.
-NVIDIA GPU를 쓰고 싶으면 [PyTorch 설치 페이지](https://pytorch.org/get-started/locally/)에서 CUDA 버전 설치 명령을 확인해
-같은 버전(`torch==2.14.0`)으로 다시 설치한다.
+앱 시작 시 장치를 자동 선택한다: **CUDA → Apple MPS → CPU**.
+
+```bash
+# 공통 (macOS 포함 — Apple Silicon 이면 MPS 자동)
+pip install -r requirements.txt
+
+# Windows / Linux + NVIDIA GPU (CUDA 12.4 휠로 torch 교체)
+pip install -r requirements-cuda.txt
+```
+
+터미널에 `사람 탐지 모델 로딩 완료 (장치: mps)` 또는 `cuda:0` 이 보이면 GPU 사용 중이다.
+CUDA 버전이 다르면 [PyTorch 설치 페이지](https://pytorch.org/get-started/locally/)에서 `torch==2.14.0`에 맞는 명령을 고른다.
 
 ## 프로젝트 구조
 
 ```
 ├── pyproject.toml / requirements.txt / environment.yml
-├── data/input · data/output
+├── data/cctv · data/cctv/screens · data/output
 ├── models/                     # YOLO 가중치 (자동 다운로드)
 ├── src/cctv_intrusion/
 │   ├── app.py / __main__.py    # 진입점
 │   ├── paths.py
 │   ├── ui/                     # PySide6 (main_window, widget/, styles/)
-│   │   └── widget/             # file_tree, camera_panel, video_*, control_bar, zone_panel
+│   │   └── widget/             # file_tree, camera_grid, video_*, zone_panel
 │   ├── video/                  # OpenCV 입출력 (동영상 파일, 웹캠)
 │   ├── intrusion/              # 침입 판정 · 사건 CSV · 클립 저장 (실시간 녹화 포함)
 │   ├── zone/                   # Zone 모델 · 등급 · json 저장
@@ -82,5 +88,5 @@ CCTV Video
 - PySide6 6.11: UI
 - OpenCV 5.0: 영상 입출력
 - NumPy 2.5: 프레임 배열
-- Ultralytics 8.4 (YOLO11s) + PyTorch 2.14 (CPU): 사람 탐지
+- Ultralytics 8.4 (YOLO11s) + PyTorch 2.14 (CUDA / MPS / CPU): 사람 탐지
 - ruff, pytest, pytest-qt: 개발 도구

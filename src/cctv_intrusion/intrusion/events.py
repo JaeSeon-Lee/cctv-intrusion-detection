@@ -1,7 +1,7 @@
 """침입 사건 CSV 기록.
 
 동영상 stem 과 같은 이름으로 OUTPUT_DIR 에 저장한다.
-예: data/input/cam1.mp4 → data/output/cam1.csv
+예: data/cctv/cam1.mp4 → data/output/cam1.csv
 클립: data/output/cam1_1.mp4, cam1_2.mp4, ...
 """
 

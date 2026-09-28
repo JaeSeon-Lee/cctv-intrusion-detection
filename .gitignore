@@ -28,6 +28,14 @@ venv/
 data/output/*
 !data/output/.gitkeep
 
+# 화면별 위험구역(로컬 설정)
+data/cctv/screens/*
+!data/cctv/screens/.gitkeep
+
+# 상시 녹화본
+data/recordings/*
+!data/recordings/.gitkeep
+
 # YOLO 모델 파일: 최초 실행 때 자동으로 내려받으므로 커밋하지 않음
 models/
 
@@ -40,6 +48,3 @@ Thumbs.db
 !README.md
 .claude/
 .cursor/
-
-# 웹캠 위험구역: PC마다 카메라 위치가 달라 커밋하지 않음
-data/input/camera_*.json

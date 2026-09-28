@@ -1,0 +1,8 @@
+# Windows / Linux NVIDIA GPU 용 PyTorch (CUDA 12.4)
+# 먼저 requirements.txt 를 설치한 뒤, 같은 환경에서 한 번 더 실행한다.
+#
+#   pip install -r requirements-cuda.txt
+#
+# CUDA 버전이 다르면 https://pytorch.org/get-started/locally/ 에서 맞는 명령을 고른다.
+--index-url https://download.pytorch.org/whl/cu124
+torch==2.14.0

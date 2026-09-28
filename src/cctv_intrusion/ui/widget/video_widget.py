@@ -34,9 +34,10 @@ class VideoWidget(QWidget):
     source_lost = Signal()  # 웹캠 연결이 끊김
     frame_ready = Signal(object, int)  # (BGR frame, frame_index)
 
-    def __init__(self) -> None:
+    def __init__(self, *, compact: bool = False) -> None:
         super().__init__()
 
+        self.compact = compact
         self.render: VideoRender | CameraCapture | None = None
         self.live = False
         self.live_elapsed_sec = 0.0  # 일시정지 전까지 흐른 시간
@@ -59,13 +60,15 @@ class VideoWidget(QWidget):
         self.view_scale = 1.0
         self.view_offset_x = 0.0
         self.view_offset_y = 0.0
+        self.source_path: str | None = None  # 파일 경로 (웹캠이면 None)
 
-        self.label = VideoLabel("왼쪽 목록에서 영상을 선택하세요")
+        self.label = VideoLabel("영상 없음")
         self.label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Ignored)
         self.label.setStyleSheet(load_qss("video_widget"))
 
         self.controls = ControlBar()
+        self.playback_speed = 1.0
         self.controls.play_button.clicked.connect(self.toggle_play)
         self.controls.prev_button.clicked.connect(self.seek_backward)
         self.controls.next_button.clicked.connect(self.seek_forward)
@@ -75,27 +78,32 @@ class VideoWidget(QWidget):
         self.controls.slider.sliderPressed.connect(self.on_slider_pressed)
         self.controls.slider.sliderReleased.connect(self.on_slider_released)
         self.controls.slider.valueChanged.connect(self.go_to_frame)
+        self.controls.speed_combo.currentIndexChanged.connect(self.on_speed_changed)
 
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.next_frame)
 
-        QShortcut(QKeySequence("Space"), self).activated.connect(self.on_space_key)
-        QShortcut(QKeySequence("Left"), self).activated.connect(self.on_left_key)
-        QShortcut(QKeySequence("Right"), self).activated.connect(self.on_right_key)
-        QShortcut(QKeySequence(","), self).activated.connect(self.on_comma_key)
-        QShortcut(QKeySequence("."), self).activated.connect(self.on_period_key)
+        if not compact:
+            QShortcut(QKeySequence("Space"), self).activated.connect(self.on_space_key)
+            QShortcut(QKeySequence("Left"), self).activated.connect(self.on_left_key)
+            QShortcut(QKeySequence("Right"), self).activated.connect(self.on_right_key)
+            QShortcut(QKeySequence(","), self).activated.connect(self.on_comma_key)
+            QShortcut(QKeySequence("."), self).activated.connect(self.on_period_key)
 
         layout = QVBoxLayout()
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
         layout.addWidget(self.label, 1)
-        layout.addWidget(self.controls)
+        if not compact:
+            layout.addWidget(self.controls)
+        else:
+            self.controls.hide()
         self.setLayout(layout)
 
         self.update_control_state()
 
-    def set_video(self, path: str) -> None:
-        self.open_source(path)
+    def set_video(self, path: str) -> bool:
+        return self.open_source(path)
 
     def open_source(self, source: str) -> bool:
         render = VideoRender(source)
@@ -107,6 +115,7 @@ class VideoWidget(QWidget):
         self.close_video()
         self.render = render
         self.live = False
+        self.source_path = str(source)
         self.controls.set_live(False)
         self.fps = render.get_fps() or DEFAULT_FPS
         self.frame_count = render.get_frame_count()
@@ -123,21 +132,24 @@ class VideoWidget(QWidget):
         return True
 
     @Slot(int)
-    def open_camera(self, index: int) -> bool:
+    def open_camera(self, index: int, *, quiet: bool = False) -> bool:
         camera = CameraCapture(index)
         if not camera.is_opened():
             camera.release()
-            QMessageBox.critical(
-                self,
-                "카메라 연결 실패",
-                f"카메라 {index}번을 열 수 없습니다.\n"
-                f"카메라가 꽂혀 있는지, 다른 프로그램이 쓰고 있지 않은지 확인하세요.",
-            )
+            if not quiet:
+                QMessageBox.critical(
+                    self,
+                    "카메라 연결 실패",
+                    f"카메라 {index}번을 열 수 없습니다.\n"
+                    f"카메라가 꽂혀 있는지, 다른 프로그램이 쓰고 있지 않은지 확인하세요.",
+                )
+            self.label.setText(f"CAM 웹캠 {index} 연결 실패")
             return False
 
         self.close_video()
         self.render = camera
         self.live = True
+        self.source_path = None
         self.live_elapsed_sec = 0.0
         self.controls.set_live(True)
         fps = camera.get_fps()
@@ -155,6 +167,7 @@ class VideoWidget(QWidget):
             self.render.release()
             self.render = None
         self.live = False
+        self.source_path = None
         self.frame_index = -1
         self.frame_count = 0
         self.at_end = False
@@ -181,8 +194,20 @@ class VideoWidget(QWidget):
             self.render.seek_frame(0)
             self.frame_index = -1
             self.at_end = False
-        self.timer.start(int(1000 / self.fps))
+        self.timer.start(self._frame_interval_ms())
         self.controls.set_playing(True)
+
+    def _frame_interval_ms(self) -> int:
+        rate = self.fps * (1.0 if self.live else self.playback_speed)
+        return max(1, int(1000 / max(rate, 0.1)))
+
+    def set_playback_speed(self, speed: float) -> None:
+        self.playback_speed = max(0.25, min(float(speed), 4.0))
+        if self.is_playing() and not self.live:
+            self.timer.start(self._frame_interval_ms())
+
+    def on_speed_changed(self) -> None:
+        self.set_playback_speed(self.controls.playback_speed())
 
     def pause(self) -> None:
         if self.live and self.is_playing():

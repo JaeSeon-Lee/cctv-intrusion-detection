@@ -2,6 +2,7 @@ import json
 
 import pytest
 
+from cctv_intrusion.paths import SCREENS_DIR
 from cctv_intrusion.zone import (
     Zone,
     ZoneFileError,
@@ -11,6 +12,7 @@ from cctv_intrusion.zone import (
     next_zone_number,
     normalize_level_id,
     save_zones,
+    screen_zone_path,
     zone_file_path,
 )
 
@@ -19,6 +21,18 @@ TRIANGLE = [(0, 0), (10, 0), (5, 8)]
 
 def test_zone_file_next_to_video(tmp_path):
     assert zone_file_path(tmp_path / "cam1.mp4") == tmp_path / "cam1.json"
+
+
+def test_screen_zone_path():
+    assert screen_zone_path(1) == SCREENS_DIR / "screen_1.json"
+    assert screen_zone_path(4).name == "screen_4.json"
+
+
+def test_save_screen_zones(tmp_path, monkeypatch):
+    monkeypatch.setattr("cctv_intrusion.zone.zone_store.SCREENS_DIR", tmp_path)
+    path = screen_zone_path(2)
+    save_zones(path, [Zone(name="구역 1", points=TRIANGLE)])
+    assert load_zones(path) == [Zone(name="구역 1", points=TRIANGLE, level="danger")]
 
 
 def test_no_file_means_no_zones(tmp_path):

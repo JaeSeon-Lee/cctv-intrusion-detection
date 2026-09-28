@@ -1,52 +1,45 @@
-/* 앱 전체 공통 스타일
- * 버튼은 ControlBar / ZonePanel 안의 것만 커스텀해
- * QMessageBox 등 시스템 대화상자는 기본 모양을 유지한다. */
-
+/* 앱 전체 — CCTV 콘솔 톤 */
 QMainWindow {
-    background-color: #e4e9ef;
+    background-color: #0b1017;
 }
 
 QSplitter::handle {
-    background-color: #c5ced8;
-    width: 1px;
-    height: 1px;
+    background-color: #1a2330;
+    width: 2px;
+    height: 2px;
 }
 
 QSplitter::handle:hover {
-    background-color: #0f766e;
+    background-color: #2dd4bf;
 }
 
 ControlBar QPushButton,
-ZonePanel QPushButton,
-CameraPanel QPushButton {
+ZonePanel QPushButton {
     font-size: 13px;
     font-weight: 600;
     padding: 8px 14px;
-    border: 1px solid #b8c2ce;
-    border-radius: 8px;
-    background-color: #ffffff;
-    color: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    background-color: #1a2330;
+    color: #e2e8f0;
 }
 
 ControlBar QPushButton:hover,
-ZonePanel QPushButton:hover,
-CameraPanel QPushButton:hover {
-    background-color: #f1f5f9;
-    border-color: #94a3b8;
+ZonePanel QPushButton:hover {
+    background-color: #243041;
+    border-color: #475569;
 }
 
 ControlBar QPushButton:pressed,
-ZonePanel QPushButton:pressed,
-CameraPanel QPushButton:pressed {
-    background-color: #e2e8f0;
+ZonePanel QPushButton:pressed {
+    background-color: #0f172a;
 }
 
 ControlBar QPushButton:disabled,
-ZonePanel QPushButton:disabled,
-CameraPanel QPushButton:disabled {
-    background-color: #eef2f6;
-    color: #94a3b8;
-    border-color: #d5dde6;
+ZonePanel QPushButton:disabled {
+    background-color: #151c26;
+    color: #64748b;
+    border-color: #1e293b;
 }
 
 QScrollBar:vertical {
@@ -56,13 +49,13 @@ QScrollBar:vertical {
 }
 
 QScrollBar::handle:vertical {
-    background: #b0bbc8;
+    background: #334155;
     border-radius: 5px;
     min-height: 28px;
 }
 
 QScrollBar::handle:vertical:hover {
-    background: #8b98a8;
+    background: #475569;
 }
 
 QScrollBar::add-line:vertical,
@@ -76,34 +69,39 @@ QScrollBar::sub-page:vertical {
 QToolTip {
     background-color: #1e293b;
     color: #f8fafc;
-    border: none;
+    border: 1px solid #334155;
     padding: 6px 10px;
     border-radius: 6px;
 }
 
-/* 왼쪽 실시간 영상 / 저장된 동영상 탭 */
-QTabWidget#sourceTabs::pane {
+/* 상단 CCTV / 기록 탭 */
+QTabWidget#mainTabs::pane {
     border: none;
-    border-right: 1px solid #cfd7e1;
-    background-color: #f7f9fb;
+    background-color: #0b1017;
 }
 
-QTabWidget#sourceTabs QTabBar::tab {
-    font-size: 12px;
+QTabWidget#mainTabs QTabBar::tab {
+    font-size: 13px;
     font-weight: 600;
     color: #64748b;
-    background-color: #e4e9ef;
-    padding: 8px 14px;
+    background-color: #121920;
+    padding: 10px 22px;
     border: none;
     border-bottom: 2px solid transparent;
+    margin-right: 2px;
 }
 
-QTabWidget#sourceTabs QTabBar::tab:selected {
-    color: #0f766e;
-    background-color: #f7f9fb;
-    border-bottom-color: #0f766e;
+QTabWidget#mainTabs QTabBar::tab:selected {
+    color: #2dd4bf;
+    background-color: #0b1017;
+    border-bottom-color: #2dd4bf;
 }
 
-QTabWidget#sourceTabs QTabBar::tab:disabled {
+QTabWidget#mainTabs QTabBar::tab:hover:!selected {
     color: #94a3b8;
+    background-color: #151c26;
+}
+
+QTabWidget#mainTabs QTabBar::tab:disabled {
+    color: #475569;
 }

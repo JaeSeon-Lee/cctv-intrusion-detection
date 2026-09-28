@@ -1,24 +1,24 @@
-# 위험구역을 동영상 옆 json 파일로 저장하고 불러온다.
-# 동영상과 같은 폴더, 같은 파일 이름에 확장자만 .json (예: data/input/a.mp4 → data/input/a.json)
+# 위험구역 JSON 저장/로드.
+#
+# 화면(슬롯) 단위: data/cctv/screens/screen_1.json ...
+# 또는 레거시: 동영상과 같은 stem 의 .json
 #
 # 파일 형식:
 #   {
-#     "video": "a.mp4",
+#     "video": "screen_1" | "a.mp4",
 #     "zones": [{"name": "구역 1", "points": [[x, y], ...], "level": "danger"}, ...]
 #   }
-#   level: detect|caution|danger (숫자 1~3, 한글·레거시 별칭도 읽기 가능)
-#     1 감지(3초) → 2 주의(2초) → 3 위험(1초)
-#   points: 원본 프레임 픽셀 좌표
 from __future__ import annotations
 
 import json
 import re
 from pathlib import Path
 
+from cctv_intrusion.paths import SCREENS_DIR
+
 from .models import MIN_POINTS, Zone
 
 ZONE_FILE_SUFFIX = ".json"
-# 구역 이름 끝에 붙은 번호 ("구역 3" → 3, 팀원 형식 "3" → 3)
 NAME_NUMBER = re.compile(r"(\d+)\s*$")
 
 
@@ -26,16 +26,25 @@ class ZoneFileError(Exception):
     """json 파일 내용이 위험구역 형식이 아닐 때"""
 
 
-def zone_file_path(video_path: str | Path) -> Path:
-    return Path(video_path).with_suffix(ZONE_FILE_SUFFIX)
+def zone_file_path(source: str | Path) -> Path:
+    """동영상 경로 또는 screen stem → .json 경로."""
+    return Path(source).with_suffix(ZONE_FILE_SUFFIX)
 
 
-def load_zones(video_path: str | Path) -> list[Zone]:
-    """동영상에 딸린 위험구역 파일을 읽는다. 파일이 없으면 빈 목록.
+def screen_zone_path(screen_index: int) -> Path:
+    """1-based 화면 번호 → data/cctv/screens/screen_N.json."""
+    SCREENS_DIR.mkdir(parents=True, exist_ok=True)
+    return SCREENS_DIR / f"screen_{screen_index}{ZONE_FILE_SUFFIX}"
 
-    파일은 있는데 읽을 수 없으면 OSError, 형식이 틀리면 ZoneFileError.
+
+def load_zones(source: str | Path) -> list[Zone]:
+    """위험구역 파일을 읽는다. 파일이 없으면 빈 목록.
+
+    source: 동영상 경로, screen stem, 또는 .json 경로.
     """
-    path = zone_file_path(video_path)
+    path = Path(source)
+    if path.suffix.lower() != ZONE_FILE_SUFFIX:
+        path = zone_file_path(path)
     if not path.exists():
         return []
 
@@ -44,7 +53,6 @@ def load_zones(video_path: str | Path) -> list[Zone]:
     except json.JSONDecodeError as error:
         raise ZoneFileError(f"json 형식이 아닙니다: {error}") from error
 
-    # 팀원 코드처럼 최상위가 구역 목록 그 자체인 파일도 받아준다
     items = raw if isinstance(raw, list) else raw.get("zones") if isinstance(raw, dict) else None
     if not isinstance(items, list):
         raise ZoneFileError('"zones" 목록이 없습니다.')
@@ -61,17 +69,21 @@ def load_zones(video_path: str | Path) -> list[Zone]:
     return zones
 
 
-def save_zones(video_path: str | Path, zones: list[Zone] | list[dict]) -> None:
-    """위험구역 목록 전체로 파일을 덮어쓴다. 구역이 0개여도 빈 목록으로 저장한다."""
-    path = zone_file_path(video_path)
+def save_zones(source: str | Path, zones: list[Zone] | list[dict]) -> None:
+    """위험구역 목록 전체로 파일을 덮어쓴다."""
+    path = Path(source)
+    if path.suffix.lower() != ZONE_FILE_SUFFIX:
+        path = zone_file_path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+
     normalized = [zone if isinstance(zone, Zone) else Zone.from_dict(zone) for zone in zones]
+    label = path.stem if path.name.startswith("screen_") else Path(source).name
     payload = {
-        "video": Path(video_path).name,
+        "video": label,
         "zones": [zone.to_dict() for zone in normalized],
     }
-    text = json.dumps(payload, ensure_ascii=False, indent=2)
 
-    # 임시 파일에 다 쓴 다음 바꿔치기한다. 쓰는 도중 앱이 꺼져도 기존 파일이 반쯤 잘린 채로 남지 않는다.
+    text = json.dumps(payload, ensure_ascii=False, indent=2)
     temp_path = path.with_name(f"{path.name}.tmp")
     try:
         temp_path.write_text(text, encoding="utf-8")
@@ -82,7 +94,6 @@ def save_zones(video_path: str | Path, zones: list[Zone] | list[dict]) -> None:
 
 
 def next_zone_number(zones: list[Zone] | list[dict]) -> int:
-    """새로 만들 구역에 붙일 번호: 이름 끝 번호 중 가장 큰 값 + 1."""
     names = [zone.name if isinstance(zone, Zone) else str(zone.get("name", "")) for zone in zones]
     numbers = [int(match.group(1)) for name in names if (match := NAME_NUMBER.search(name))]
     return max(numbers, default=len(zones)) + 1

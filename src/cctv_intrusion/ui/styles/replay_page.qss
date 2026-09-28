@@ -1,0 +1,37 @@
+ReplayPage,
+QWidget#replaySide {
+    background-color: #121920;
+}
+
+QLabel#hint {
+    font-size: 12px;
+    color: #64748b;
+    background-color: #0b1017;
+    padding: 10px 16px 14px 16px;
+    border-top: 1px solid #1e293b;
+}
+
+QListWidget#clipsList {
+    background-color: #121920;
+    color: #e2e8f0;
+    border: none;
+    border-top: 1px solid #1e293b;
+    outline: none;
+    padding: 6px 8px 10px 8px;
+    font-size: 13px;
+}
+
+QListWidget#clipsList::item {
+    padding: 8px 10px;
+    margin: 1px 0;
+    border-radius: 6px;
+}
+
+QListWidget#clipsList::item:hover {
+    background-color: #1a2330;
+}
+
+QListWidget#clipsList::item:selected {
+    background-color: #134e4a;
+    color: #ccfbf1;
+}
