@@ -1,0 +1,59 @@
+CameraPanel {
+    background-color: #f7f9fb;
+}
+
+QLabel#panelTitle {
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.4px;
+    color: #475569;
+    padding: 14px 16px 8px 16px;
+}
+
+QLabel#panelSubtitle {
+    font-size: 11px;
+    color: #64748b;
+    padding: 0 16px 10px 16px;
+}
+
+QLabel#hint {
+    font-size: 11px;
+    color: #64748b;
+}
+
+QComboBox#cameraCombo {
+    font-size: 13px;
+    font-weight: 600;
+    padding: 6px 10px;
+    border: 1px solid #d5dde6;
+    border-radius: 8px;
+    background-color: #ffffff;
+    color: #1e293b;
+    min-height: 28px;
+}
+
+QComboBox#cameraCombo:hover {
+    border-color: #94a3b8;
+}
+
+QComboBox#cameraCombo:disabled {
+    background-color: #eef2f6;
+    color: #94a3b8;
+}
+
+QPushButton#primaryAction {
+    background-color: #0f766e;
+    border-color: #0f766e;
+    color: #ffffff;
+}
+
+QPushButton#primaryAction:hover {
+    background-color: #0d9488;
+    border-color: #0d9488;
+    color: #ffffff;
+}
+
+QPushButton#primaryAction:pressed {
+    background-color: #115e59;
+    border-color: #115e59;
+}

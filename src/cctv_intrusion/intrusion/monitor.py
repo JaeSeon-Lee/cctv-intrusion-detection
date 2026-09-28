@@ -40,6 +40,7 @@ class IntrusionMonitor:
         # 경보 중인 구역 → (경보 확정 시각(초), level)
         self._active_alarms: dict[str, tuple[float, str]] = {}
         self._last_frame_index: int | None = None
+        self._last_fps = 0.0
 
     def reset(self) -> None:
         self.zones = []
@@ -48,6 +49,7 @@ class IntrusionMonitor:
         self._dwell_sec.clear()
         self._active_alarms.clear()
         self._last_frame_index = None
+        self._last_fps = 0.0
 
     def set_zones(self, zones: list[Zone]) -> MonitorState:
         self.zones = list(zones)
@@ -71,6 +73,7 @@ class IntrusionMonitor:
         fps: float,
     ) -> MonitorState:
         self.new_events = []
+        self._last_fps = fps
 
         if not self.zones:
             self.state = MonitorState.IDLE
@@ -126,3 +129,27 @@ class IntrusionMonitor:
             self.state = MonitorState.ARMED
 
         return self.state
+
+    def close_alarms(self) -> list[IntrusionEvent]:
+        """아직 경보 중인 구역을 마지막 탐지 시각에 해제된 사건으로 만들어 돌려준다.
+
+        실시간 영상 연결을 끊을 때처럼 해제를 기다릴 수 없을 때 쓴다.
+        """
+        if self._last_frame_index is None or self._last_fps <= 0:
+            return []
+        cleared_sec = self._last_frame_index / self._last_fps
+        events = [
+            IntrusionEvent.create(
+                alarm_sec=alarm_sec,
+                cleared_sec=cleared_sec,
+                zone_name=zone_name,
+                zone_level=zone_level,
+            )
+            for zone_name, (alarm_sec, zone_level) in self._active_alarms.items()
+        ]
+        self._active_alarms.clear()
+        for name in self._dwell_sec:
+            self._dwell_sec[name] = 0.0
+        if self.state == MonitorState.ALARM:
+            self.state = MonitorState.CLEARED
+        return events

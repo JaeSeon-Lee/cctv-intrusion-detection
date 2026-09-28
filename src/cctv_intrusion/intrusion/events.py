@@ -43,6 +43,8 @@ class IntrusionEvent:
     clip_end: str
     zone_name: str
     zone_level: str
+    alarm_sec: float
+    cleared_sec: float
     clip_start_sec: float
     clip_end_sec: float
     clip_file: str = ""
@@ -68,6 +70,8 @@ class IntrusionEvent:
             clip_end=format_video_timestamp(clip_end_sec),
             zone_name=zone_name,
             zone_level=zone_level,
+            alarm_sec=alarm_sec,
+            cleared_sec=cleared_sec,
             clip_start_sec=clip_start_sec,
             clip_end_sec=clip_end_sec,
         )

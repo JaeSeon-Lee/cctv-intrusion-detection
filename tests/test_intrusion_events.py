@@ -125,3 +125,20 @@ def test_monitor_emits_event_on_clear_not_on_alarm():
     assert event.duration_sec == 1.5
     assert event.clip_start_sec == 0.0
     assert event.clip_end_sec == 7.5  # cleared 2.5 + 5
+
+
+def test_monitor_close_alarms_returns_active_alarm_as_event():
+    zone = Zone(name="구역1", points=[(0, 0), (100, 0), (100, 100), (0, 100)], level="danger")
+    monitor = IntrusionMonitor()
+    monitor.set_zones([zone])
+    inside = [Detection(x1=40, y1=10, x2=60, y2=50, confidence=0.9)]
+    for frame_index in range(0, 21):  # 10fps 로 2초 동안 구역 안
+        monitor.update(inside, frame_index, 10.0)
+    assert monitor.state == MonitorState.ALARM
+
+    events = monitor.close_alarms()
+    assert len(events) == 1
+    assert events[0].zone_name == "구역1"
+    assert events[0].cleared_at == "00:02.000"
+    assert monitor.state == MonitorState.CLEARED
+    assert monitor.close_alarms() == []

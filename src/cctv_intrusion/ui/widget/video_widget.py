@@ -1,3 +1,5 @@
+import time
+
 from PySide6.QtCore import Qt, QTimer, Signal, Slot
 from PySide6.QtGui import QImage, QKeySequence, QPixmap, QShortcut
 from PySide6.QtWidgets import QMessageBox, QSizePolicy, QVBoxLayout, QWidget
@@ -12,24 +14,33 @@ from cctv_intrusion.ui.widget.video_overlay import (
     draw_monitor_state,
     draw_zones,
 )
-from cctv_intrusion.video import VideoRender
+from cctv_intrusion.video import CameraCapture, VideoRender
 from cctv_intrusion.zone import Zone
 
 DEFAULT_FPS = 30
+MAX_LIVE_FPS = 60
 SEEK_SECONDS = 5
 POINT_HIT_RADIUS = 10
 
 
 class VideoWidget(QWidget):
-    """영상 재생 · 위험구역 편집 · 탐지 박스 표시를 담당하는 중앙 위젯."""
+    """영상 재생 · 위험구역 편집 · 탐지 박스 표시를 담당하는 중앙 위젯.
 
-    source_opened = Signal(str)
+    저장된 동영상(open_source)과 실시간 웹캠(open_camera)을 같은 화면에서 보여준다.
+    실시간일 때 frame_index 는 연결 후 흐른 시간 × fps 이다 (frame_index / fps = 실제 경과 초).
+    """
+
+    source_opened = Signal(str)  # 동영상 경로, 또는 웹캠 번호
+    source_lost = Signal()  # 웹캠 연결이 끊김
     frame_ready = Signal(object, int)  # (BGR frame, frame_index)
 
     def __init__(self) -> None:
         super().__init__()
 
-        self.render: VideoRender | None = None
+        self.render: VideoRender | CameraCapture | None = None
+        self.live = False
+        self.live_elapsed_sec = 0.0  # 일시정지 전까지 흐른 시간
+        self.live_resumed_at = 0.0
         self.fps = DEFAULT_FPS
         self.frame_count = 0
         self.frame_index = -1
@@ -95,6 +106,8 @@ class VideoWidget(QWidget):
 
         self.close_video()
         self.render = render
+        self.live = False
+        self.controls.set_live(False)
         self.fps = render.get_fps() or DEFAULT_FPS
         self.frame_count = render.get_frame_count()
 
@@ -109,17 +122,46 @@ class VideoWidget(QWidget):
         self.play()
         return True
 
+    @Slot(int)
+    def open_camera(self, index: int) -> bool:
+        camera = CameraCapture(index)
+        if not camera.is_opened():
+            camera.release()
+            QMessageBox.critical(
+                self,
+                "카메라 연결 실패",
+                f"카메라 {index}번을 열 수 없습니다.\n"
+                f"카메라가 꽂혀 있는지, 다른 프로그램이 쓰고 있지 않은지 확인하세요.",
+            )
+            return False
+
+        self.close_video()
+        self.render = camera
+        self.live = True
+        self.live_elapsed_sec = 0.0
+        self.controls.set_live(True)
+        fps = camera.get_fps()
+        self.fps = fps if 0 < fps <= MAX_LIVE_FPS else DEFAULT_FPS
+        camera.start()
+
+        self.update_control_state()
+        self.source_opened.emit(str(index))
+        self.play()
+        return True
+
     def close_video(self) -> None:
         self.pause()
         if self.render is not None:
             self.render.release()
             self.render = None
+        self.live = False
         self.frame_index = -1
         self.frame_count = 0
         self.at_end = False
         self.current_pixmap = None
         self.detections = []
         self.label.clear()
+        self.controls.set_live(False)
         self.update_control_state()
 
     def frame_size(self) -> tuple[int, int]:
@@ -133,6 +175,8 @@ class VideoWidget(QWidget):
     def play(self) -> None:
         if self.render is None:
             return
+        if self.live:
+            self.live_resumed_at = time.monotonic()
         if self.at_end:
             self.render.seek_frame(0)
             self.frame_index = -1
@@ -141,6 +185,8 @@ class VideoWidget(QWidget):
         self.controls.set_playing(True)
 
     def pause(self) -> None:
+        if self.live and self.is_playing():
+            self.live_elapsed_sec += time.monotonic() - self.live_resumed_at
         self.timer.stop()
         self.controls.set_playing(False)
 
@@ -154,6 +200,17 @@ class VideoWidget(QWidget):
         if self.render is None:
             return
         ret, frame = self.render.read()
+        if self.live:
+            if not ret:
+                # 아직 새 프레임이 없으면 다음 타이머에서 다시 본다
+                if self.render.lost:
+                    self.pause()
+                    self.source_lost.emit()
+                return
+            elapsed = self.live_elapsed_sec + time.monotonic() - self.live_resumed_at
+            self.frame_index = round(elapsed * self.fps)
+            self.handle_frame(frame)
+            return
         if not ret:
             self.at_end = True
             self.pause()
@@ -360,10 +417,11 @@ class VideoWidget(QWidget):
 
     def update_control_state(self) -> None:
         has_video = self.render is not None and self.controls_enabled
+        seekable = has_video and not self.live
         self.controls.play_button.setEnabled(has_video)
-        self.controls.prev_button.setEnabled(has_video)
-        self.controls.next_button.setEnabled(has_video)
-        self.controls.slider.setEnabled(has_video)
+        self.controls.prev_button.setEnabled(seekable)
+        self.controls.next_button.setEnabled(seekable)
+        self.controls.slider.setEnabled(seekable)
         if self.render is None:
             self.controls.set_time(0, 0)
 

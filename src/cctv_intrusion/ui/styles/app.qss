@@ -17,7 +17,8 @@ QSplitter::handle:hover {
 }
 
 ControlBar QPushButton,
-ZonePanel QPushButton {
+ZonePanel QPushButton,
+CameraPanel QPushButton {
     font-size: 13px;
     font-weight: 600;
     padding: 8px 14px;
@@ -28,18 +29,21 @@ ZonePanel QPushButton {
 }
 
 ControlBar QPushButton:hover,
-ZonePanel QPushButton:hover {
+ZonePanel QPushButton:hover,
+CameraPanel QPushButton:hover {
     background-color: #f1f5f9;
     border-color: #94a3b8;
 }
 
 ControlBar QPushButton:pressed,
-ZonePanel QPushButton:pressed {
+ZonePanel QPushButton:pressed,
+CameraPanel QPushButton:pressed {
     background-color: #e2e8f0;
 }
 
 ControlBar QPushButton:disabled,
-ZonePanel QPushButton:disabled {
+ZonePanel QPushButton:disabled,
+CameraPanel QPushButton:disabled {
     background-color: #eef2f6;
     color: #94a3b8;
     border-color: #d5dde6;
@@ -75,4 +79,31 @@ QToolTip {
     border: none;
     padding: 6px 10px;
     border-radius: 6px;
+}
+
+/* 왼쪽 실시간 영상 / 저장된 동영상 탭 */
+QTabWidget#sourceTabs::pane {
+    border: none;
+    border-right: 1px solid #cfd7e1;
+    background-color: #f7f9fb;
+}
+
+QTabWidget#sourceTabs QTabBar::tab {
+    font-size: 12px;
+    font-weight: 600;
+    color: #64748b;
+    background-color: #e4e9ef;
+    padding: 8px 14px;
+    border: none;
+    border-bottom: 2px solid transparent;
+}
+
+QTabWidget#sourceTabs QTabBar::tab:selected {
+    color: #0f766e;
+    background-color: #f7f9fb;
+    border-bottom-color: #0f766e;
+}
+
+QTabWidget#sourceTabs QTabBar::tab:disabled {
+    color: #94a3b8;
 }
