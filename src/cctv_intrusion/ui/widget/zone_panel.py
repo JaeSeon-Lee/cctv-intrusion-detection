@@ -6,6 +6,7 @@ from PySide6.QtWidgets import (
     QComboBox,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QListWidget,
     QPushButton,
     QVBoxLayout,
@@ -53,7 +54,8 @@ class ZonePanel(QWidget):
 
         self.zones: list[Zone] = []
         self.next_number = 1
-        self._syncing_level = False
+        self._drawing = False
+        self._syncing_edit = False
 
         self.zone_button = QPushButton("위험지역 설정")
         self.apply_button = QPushButton("완료")
@@ -64,29 +66,43 @@ class ZonePanel(QWidget):
         )
         self.edit_label.setWordWrap(True)
 
-        level_caption = QLabel("구역 등급")
-        level_caption.setObjectName("title")
-        self.level_hint = QLabel("새 구역에 적용 · 목록에서 고른 구역의 등급도 여기서 바꿉니다")
-        self.level_hint.setObjectName("hint")
-        self.level_hint.setWordWrap(True)
-
-        self.level_combo = QComboBox()
-        for level in ZONE_LEVELS:
-            self.level_combo.addItem(f"{level.rank}  {level.label}", level.id)
-        self.set_combo_level(DEFAULT_LEVEL_ID)
+        default_caption = QLabel("새 구역 기본 등급")
+        default_caption.setObjectName("title")
+        self.default_level_combo = QComboBox()
+        self._fill_level_combo(self.default_level_combo)
+        self.set_combo_level(self.default_level_combo, DEFAULT_LEVEL_ID)
 
         title = QLabel("위험구역")
+        self.list = ZoneList()
+
+        edit_caption = QLabel("선택 구역 수정")
+        edit_caption.setObjectName("title")
+        self.name_edit = QLineEdit()
+        self.name_edit.setPlaceholderText("구역 이름")
+        self.name_edit.setClearButtonEnabled(True)
+
+        self.edit_level_combo = QComboBox()
+        self._fill_level_combo(self.edit_level_combo)
+
+        self.apply_edit_button = QPushButton("수정 적용")
+        self.apply_edit_button.setObjectName("apply")
+
+        self.edit_hint = QLabel("목록에서 구역을 선택한 뒤 이름·등급을 바꾸고 [수정 적용]을 누르세요")
+        self.edit_hint.setObjectName("hint")
+        self.edit_hint.setWordWrap(True)
+
         hint = QLabel("Delete로 선택 구역 삭제 · Esc 또는 빈 곳 클릭으로 선택 해제")
         hint.setWordWrap(True)
-
-        self.list = ZoneList()
+        hint.setObjectName("hint")
 
         for widget in (
             self.zone_button,
             self.apply_button,
             self.cancel_button,
             self.list,
-            self.level_combo,
+            self.default_level_combo,
+            self.edit_level_combo,
+            self.apply_edit_button,
         ):
             widget.setFocusPolicy(Qt.FocusPolicy.NoFocus)
 
@@ -95,77 +111,127 @@ class ZonePanel(QWidget):
         self.apply_button.setObjectName("apply")
         self.cancel_button.setObjectName("cancel")
         self.edit_label.setObjectName("editLabel")
-        self.level_combo.setObjectName("levelCombo")
+        self.default_level_combo.setObjectName("levelCombo")
+        self.edit_level_combo.setObjectName("levelCombo")
+        self.name_edit.setObjectName("nameEdit")
+        default_caption.setObjectName("title")
         title.setObjectName("title")
-        hint.setObjectName("hint")
 
         self.setStyleSheet(load_qss("zone_panel"))
 
-        edit_buttons = QHBoxLayout()
-        edit_buttons.setSpacing(8)
-        edit_buttons.addWidget(self.apply_button)
-        edit_buttons.addWidget(self.cancel_button)
+        draw_buttons = QHBoxLayout()
+        draw_buttons.setSpacing(8)
+        draw_buttons.addWidget(self.apply_button)
+        draw_buttons.addWidget(self.cancel_button)
 
         layout = QVBoxLayout()
         layout.setContentsMargins(14, 14, 14, 14)
         layout.setSpacing(10)
         layout.addWidget(self.zone_button)
         layout.addWidget(self.edit_label)
-        layout.addLayout(edit_buttons)
-        layout.addWidget(level_caption)
-        layout.addWidget(self.level_combo)
-        layout.addWidget(self.level_hint)
+        layout.addLayout(draw_buttons)
+        layout.addWidget(default_caption)
+        layout.addWidget(self.default_level_combo)
         layout.addSpacing(4)
         layout.addWidget(title)
         layout.addWidget(self.list, 1)
+        layout.addWidget(edit_caption)
+        layout.addWidget(self.name_edit)
+        layout.addWidget(self.edit_level_combo)
+        layout.addWidget(self.apply_edit_button)
+        layout.addWidget(self.edit_hint)
         layout.addWidget(hint)
         self.setLayout(layout)
 
         self.list.itemSelectionChanged.connect(self.on_selection_changed)
-        self.level_combo.currentIndexChanged.connect(self.on_level_changed)
+        self.apply_edit_button.clicked.connect(self.apply_selected_edit)
+        self.name_edit.returnPressed.connect(self.apply_selected_edit)
         QShortcut(QKeySequence(Qt.Key.Key_Delete), self).activated.connect(self.on_delete_key)
         QShortcut(QKeySequence(Qt.Key.Key_Escape), self).activated.connect(self.list.clearSelection)
 
         self.set_edit_mode(False)
+        self.update_edit_form()
+
+    @staticmethod
+    def _fill_level_combo(combo: QComboBox) -> None:
+        for level in ZONE_LEVELS:
+            combo.addItem(f"{level.rank}  {level.label}", level.id)
 
     def set_edit_mode(self, editing: bool) -> None:
+        """다각형 그리기 모드 on/off (영상 위 꼭짓점 편집)."""
+        self._drawing = editing
         self.zone_button.setVisible(not editing)
         self.edit_label.setVisible(editing)
         self.apply_button.setVisible(editing)
         self.cancel_button.setVisible(editing)
         self.list.setEnabled(not editing)
+        self.default_level_combo.setEnabled(not editing)
+        self.update_edit_form()
 
-    def current_level_id(self) -> str:
-        data = self.level_combo.currentData()
+    def current_default_level_id(self) -> str:
+        data = self.default_level_combo.currentData()
         return normalize_level_id(data if data is not None else DEFAULT_LEVEL_ID)
 
-    def set_combo_level(self, level_id: str | int | None) -> None:
+    def set_combo_level(self, combo: QComboBox, level_id: str | int | None) -> None:
         target = normalize_level_id(level_id)
-        index = self.level_combo.findData(target)
+        index = combo.findData(target)
         if index < 0:
-            index = self.level_combo.findData(DEFAULT_LEVEL_ID)
-        self._syncing_level = True
+            index = combo.findData(DEFAULT_LEVEL_ID)
+        self._syncing_edit = True
         try:
-            self.level_combo.setCurrentIndex(max(0, index))
+            combo.setCurrentIndex(max(0, index))
         finally:
-            self._syncing_level = False
+            self._syncing_edit = False
 
     def on_selection_changed(self) -> None:
-        index = self.selected_index()
-        if index >= 0:
-            self.set_combo_level(self.zones[index].level)
-        self.selection_changed.emit(index)
+        self.update_edit_form()
+        self.selection_changed.emit(self.selected_index())
 
-    def on_level_changed(self) -> None:
-        if self._syncing_level:
+    def update_edit_form(self) -> None:
+        index = self.selected_index()
+        can_edit = (not self._drawing) and index >= 0 and self.list.isEnabled()
+        self.name_edit.setEnabled(can_edit)
+        self.edit_level_combo.setEnabled(can_edit)
+        self.apply_edit_button.setEnabled(can_edit)
+
+        if not can_edit:
+            if index < 0:
+                self._syncing_edit = True
+                try:
+                    self.name_edit.clear()
+                    self.set_combo_level(self.edit_level_combo, DEFAULT_LEVEL_ID)
+                finally:
+                    self._syncing_edit = False
+            return
+
+        zone = self.zones[index]
+        self._syncing_edit = True
+        try:
+            self.name_edit.setText(zone.name)
+            self.set_combo_level(self.edit_level_combo, zone.level)
+        finally:
+            self._syncing_edit = False
+
+    def apply_selected_edit(self) -> None:
+        if self._syncing_edit or self._drawing:
             return
         index = self.selected_index()
         if index < 0 or not self.list.isEnabled():
             return
-        level_id = self.current_level_id()
-        if self.zones[index].level == level_id:
+
+        name = self.name_edit.text().strip()
+        if not name:
+            self.name_edit.setFocus()
+            self.name_edit.selectAll()
             return
-        self.zones[index].level = level_id
+
+        level_id = normalize_level_id(self.edit_level_combo.currentData())
+        zone = self.zones[index]
+        if zone.name == name and zone.level == level_id:
+            return
+
+        zone.name = name
+        zone.level = level_id
         self.refresh_list_item(index)
         self.zones_changed.emit(self.zones)
 
@@ -184,7 +250,7 @@ class ZonePanel(QWidget):
     def add_zone(self, points: list[tuple[int, int]]) -> str:
         name = f"구역 {self.next_number}"
         self.next_number += 1
-        zone = Zone(name=name, points=list(points), level=self.current_level_id())
+        zone = Zone(name=name, points=list(points), level=self.current_default_level_id())
         self.zones.append(zone)
         self.list.addItem(format_zone_item(zone.name, zone.level))
         self.zones_changed.emit(self.zones)
@@ -199,6 +265,7 @@ class ZonePanel(QWidget):
         self.rebuild_list()
         self.zones_changed.emit(self.zones)
         self.selection_changed.emit(self.selected_index())
+        self.update_edit_form()
 
     def remove_zone(self, index: int) -> None:
         if not 0 <= index < len(self.zones):
@@ -208,11 +275,15 @@ class ZonePanel(QWidget):
         self.list.clearSelection()
         self.zones_changed.emit(self.zones)
         self.selection_changed.emit(self.selected_index())
+        self.update_edit_form()
 
     def selected_index(self) -> int:
         rows = [index.row() for index in self.list.selectedIndexes()]
         return rows[0] if rows else -1
 
     def on_delete_key(self) -> None:
+        # 이름 입력 중이면 글자 삭제가 우선이므로 포커스가 리스트/패널에 있을 때만 구역 삭제
+        if self.name_edit.hasFocus():
+            return
         if self.list.isEnabled() and self.selected_index() >= 0:
             self.remove_zone(self.selected_index())

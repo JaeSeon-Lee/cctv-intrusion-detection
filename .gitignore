@@ -40,3 +40,6 @@ Thumbs.db
 !README.md
 .claude/
 .cursor/
+
+# 웹캠 위험구역: PC마다 카메라 위치가 달라 커밋하지 않음
+data/input/camera_*.json

@@ -7,12 +7,16 @@ from cctv_intrusion.ui.styles import load_qss
 class ControlBar(QWidget):
     """재생 컨트롤 (5초 뒤로 / 재생·일시정지 / 5초 앞으로 / 탐색 슬라이더 / 시간)
 
+    실시간(웹캠)일 때는 탐색할 수 없으므로 재생·일시정지와 경과 시간만 보인다.
+
     버튼과 슬라이더는 화면만 담당하고,
     실제 동작은 VideoWidget에서 clicked, valueChanged 등의 신호에 연결해서 처리한다.
     """
 
     def __init__(self):
         super().__init__()
+
+        self.live = False
 
         self.prev_button = QPushButton("−5초")
         self.play_button = QPushButton("재생")
@@ -39,13 +43,22 @@ class ControlBar(QWidget):
         layout.addWidget(self.play_button)
         layout.addWidget(self.next_button)
         layout.addWidget(self.slider, 1)  # 1: 남는 가로 공간을 슬라이더가 차지
+        layout.addStretch(0)  # 실시간이라 슬라이더를 숨겼을 때 시간을 오른쪽 끝에 둔다
         layout.addWidget(self.time_label)
         self.setLayout(layout)
 
     def set_playing(self, playing):
         self.play_button.setText("일시정지" if playing else "재생")
 
+    def set_live(self, live):
+        self.live = live
+        for widget in (self.prev_button, self.next_button, self.slider):
+            widget.setVisible(not live)
+
     def set_time(self, current_sec, total_sec):
+        if self.live:
+            self.time_label.setText(f"● LIVE  {format_time(current_sec)}")
+            return
         self.time_label.setText(f"{format_time(current_sec)} / {format_time(total_sec)}")
 
 

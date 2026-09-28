@@ -96,6 +96,30 @@ QComboBox#levelCombo QAbstractItemView {
     padding: 4px;
 }
 
+QLineEdit#nameEdit {
+    font-size: 13px;
+    padding: 7px 10px;
+    border: 1px solid #d5dde6;
+    border-radius: 8px;
+    background-color: #ffffff;
+    color: #1e293b;
+    min-height: 28px;
+}
+
+QLineEdit#nameEdit:focus {
+    border-color: #0f766e;
+}
+
+QLineEdit#nameEdit:disabled {
+    background-color: #eef2f6;
+    color: #94a3b8;
+}
+
+QComboBox#levelCombo:disabled {
+    background-color: #eef2f6;
+    color: #94a3b8;
+}
+
 QListWidget {
     background-color: #ffffff;
     font-size: 13px;

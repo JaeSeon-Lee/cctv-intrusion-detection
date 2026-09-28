@@ -29,11 +29,25 @@ python -m cctv_intrusion              # 또는 cctv-intrusion
 - 테스트: `pytest`
 - 린트·포맷: `ruff check --fix . && ruff format .`
 
+### 실시간 영상 / 저장된 동영상
+
+왼쪽 탭에서 입력을 고른다. 위험구역 설정·경보는 두 탭이 같다.
+
+- **실시간 영상**: 카메라 번호(내장 카메라는 보통 0번)를 고르고 [연결]한다.
+  위험구역은 `data/input/camera_0.json` 처럼 카메라 번호별로 저장된다 (PC마다 달라 커밋하지 않음).
+  침입이 감지되면 경보 3초 전 ~ 해제 5초 후를 `data/output/live_YYYYmmdd_HHMMSS.mp4` 로 녹화하고,
+  같은 이름의 `.csv` 에 사건을 기록한다 (CSV 시각은 클립 안의 시각).
+- **저장된 동영상**: `data/` 아래 영상 파일을 골라 재생한다. 사건은 `data/output/{영상이름}_N.mp4` / `{영상이름}.csv`.
+
+macOS 는 처음 연결할 때 터미널(또는 IDE)에 카메라 권한을 허용해야 한다. WSL2 는 기본 설정으로는 웹캠을 쓸 수 없다.
+
 ### 사람 탐지 GPU 사용 (선택)
 
-`requirements.txt` 는 용량이 작은 **CPU 전용 torch**(약 200MB)를 설치한다. CPU에서도 yolo11s는 프레임당 약 70ms라, 재생은 그대로 하면서 박스는 초당 10번 이상 갱신된다.
+`requirements.txt` 는 용량이 작은 **CPU 전용 torch**(약 200MB)를 설치한다.
+Apple Silicon(MPS)이나 NVIDIA CUDA가 있으면 코드가 자동으로 그쪽을 쓰고, 추론 해상도(`imgsz=1280`)로 작은 사람 탐지를 보강한다.
+CPU만 있으면 프레임당 약 200ms 안팎이라 박스는 재생보다 덜 자주 갱신될 수 있다.
 NVIDIA GPU를 쓰고 싶으면 [PyTorch 설치 페이지](https://pytorch.org/get-started/locally/)에서 CUDA 버전 설치 명령을 확인해
-같은 버전(`torch==2.14.0`)으로 다시 설치한다. (CUDA 라이브러리 포함 수 GB) 코드는 GPU가 있으면 자동으로 GPU를 사용한다.
+같은 버전(`torch==2.14.0`)으로 다시 설치한다.
 
 ## 프로젝트 구조
 
@@ -45,8 +59,9 @@ NVIDIA GPU를 쓰고 싶으면 [PyTorch 설치 페이지](https://pytorch.org/ge
 │   ├── app.py / __main__.py    # 진입점
 │   ├── paths.py
 │   ├── ui/                     # PySide6 (main_window, widget/, styles/)
-│   │   └── widget/             # file_tree, video_*, control_bar, zone_panel
-│   ├── video/                  # OpenCV 입출력
+│   │   └── widget/             # file_tree, camera_panel, video_*, control_bar, zone_panel
+│   ├── video/                  # OpenCV 입출력 (동영상 파일, 웹캠)
+│   ├── intrusion/              # 침입 판정 · 사건 CSV · 클립 저장 (실시간 녹화 포함)
 │   ├── zone/                   # Zone 모델 · 등급 · json 저장
 │   └── detection/              # YOLO 사람 탐지 (워커 스레드)
 └── tests/
