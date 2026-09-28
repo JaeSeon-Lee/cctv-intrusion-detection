@@ -2,7 +2,7 @@
 #
 # 추론(CPU 기준 프레임당 약 40ms)을 UI 스레드에서 하면 재생·버튼이 멈추므로 QThread로 분리한다.
 # 재생 속도가 추론보다 빠르면 프레임이 쌓이는데, 밀린 프레임을 다 처리하면 박스가 점점 늦게 나오므로
-# "추론 중에 들어온 프레임은 가장 최근 것 하나만" 남기고 나머지는 건너뛴다.
+# 캠(screen)마다 "가장 최근 프레임 하나"만 남기고, 한가해지면 캠을 돌아가며 처리한다.
 import logging
 from collections.abc import Callable
 
@@ -55,6 +55,8 @@ class DetectionWorker(QObject):
 class PersonDetection(QObject):
     """UI 스레드 쪽 창구. screen_id 로 어느 CCTV 칸인지 구분한다.
 
+    YOLO 워커는 1개. 캠마다 최신 프레임 1장만 대기열에 두고 라운드로빈으로 처리한다.
+
     Signals:
       ready(str)
       failed(str)
@@ -71,7 +73,10 @@ class PersonDetection(QObject):
         super().__init__()
         self.available = True
         self.busy = False
-        self.pending = None  # (frame, frame_index, screen_id)
+        # screen_id → (frame, frame_index)  캠별 최신 1장
+        self.pending: dict[int, tuple[np.ndarray, int]] = {}
+        # 대기 중인 캠 처리 순서 (먼저 들어온 캠부터, 동일 캠은 슬롯만 갱신)
+        self._pending_order: list[int] = []
         self.generation = 0
 
         self.thread = QThread()
@@ -94,13 +99,16 @@ class PersonDetection(QObject):
 
     def reset(self) -> None:
         self.generation += 1
-        self.pending = None
+        self.pending.clear()
+        self._pending_order.clear()
 
     def submit(self, frame: np.ndarray, frame_index: int, screen_id: int = 0) -> None:
         if not self.available:
             return
         if self.busy:
-            self.pending = (frame.copy(), frame_index, screen_id)
+            if screen_id not in self.pending:
+                self._pending_order.append(screen_id)
+            self.pending[screen_id] = (frame.copy(), frame_index)
             return
         self.send(frame.copy(), frame_index, screen_id)
 
@@ -109,11 +117,11 @@ class PersonDetection(QObject):
         self.request.emit(self.generation, screen_id, frame_index, frame)
 
     def send_pending(self) -> None:
-        if self.pending is None:
+        if not self._pending_order:
             self.busy = False
             return
-        frame, frame_index, screen_id = self.pending
-        self.pending = None
+        screen_id = self._pending_order.pop(0)
+        frame, frame_index = self.pending.pop(screen_id)
         self.send(frame, frame_index, screen_id)
 
     @Slot(str)
@@ -126,7 +134,8 @@ class PersonDetection(QObject):
     def on_load_failed(self, message: str) -> None:
         self.available = False
         self.busy = False
-        self.pending = None
+        self.pending.clear()
+        self._pending_order.clear()
         self.failed.emit(message)
 
     @Slot(int, int, int, object)

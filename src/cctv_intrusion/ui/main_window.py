@@ -1,5 +1,10 @@
+from __future__ import annotations
 
-from PySide6.QtCore import Qt, Signal, Slot
+import logging
+import threading
+import time
+
+from PySide6.QtCore import Qt, QTimer, Signal, Slot
 from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QMainWindow,
@@ -9,17 +14,14 @@ from PySide6.QtWidgets import (
 )
 
 from cctv_intrusion.detection import Detection, PersonDetection
-from cctv_intrusion.intrusion import (
-    IntrusionMonitor,
-    LiveRecorder,
-    MonitorState,
-    save_event_records,
-)
-from cctv_intrusion.paths import OUTPUT_DIR, RECORDINGS_DIR, SCREEN_COUNT
+from cctv_intrusion.intrusion import IntrusionClipper, IntrusionMonitor, MonitorState
+from cctv_intrusion.intrusion.recording_clip import ClipExportJob, run_clip_export
+from cctv_intrusion.paths import OUTPUT_DIR, RECORDINGS_DIR, SCREEN_COUNT, screen_recordings_dir
 from cctv_intrusion.ui.widget.camera_grid import CameraGrid
 from cctv_intrusion.ui.widget.file_tree import FileTree
 from cctv_intrusion.ui.widget.replay_page import ReplayPage
 from cctv_intrusion.ui.widget.zone_panel import ZonePanel
+from cctv_intrusion.video import ContinuousRecorder, compose_overlay_frame
 from cctv_intrusion.zone import (
     MIN_POINTS,
     Zone,
@@ -31,6 +33,24 @@ from cctv_intrusion.zone import (
 
 WINDOW_SCREEN_RATIO = 0.92
 SPLITTER_SIZES = (220, 1100, 260)
+# 상시 녹화: 720p 기준 매 프레임 기록 (고해상도일 때만 가로 상한 적용)
+RECORD_MAX_WIDTH = 1280
+RECORD_FRAME_STRIDE = 1
+_SLOW_FRAME_SEC = 0.08
+_HEARTBEAT_MS = 5000
+
+logger = logging.getLogger(__name__)
+
+
+def _record_frame_size(width: int, height: int) -> tuple[int, int]:
+    """상시 녹화용 짝수 해상도 (가로 상한)."""
+    if width <= 0 or height <= 0:
+        return 0, 0
+    if width > RECORD_MAX_WIDTH:
+        scale = RECORD_MAX_WIDTH / width
+        width = RECORD_MAX_WIDTH
+        height = max(2, int(height * scale))
+    return width - (width % 2), height - (height % 2)
 
 
 class MainWindow(QMainWindow):
@@ -43,6 +63,8 @@ class MainWindow(QMainWindow):
     zone_edit_started = Signal()
     zone_edit_applied = Signal()
     zone_edit_canceled = Signal()
+    clip_export_finished = Signal(int, object)  # screen_index, csv Path | None
+    clip_export_failed = Signal(int, str)
 
     def __init__(self) -> None:
         super().__init__()
@@ -55,7 +77,12 @@ class MainWindow(QMainWindow):
         RECORDINGS_DIR.mkdir(parents=True, exist_ok=True)
 
         self.monitors = {i: IntrusionMonitor() for i in range(1, SCREEN_COUNT + 1)}
-        self.live_recorders: dict[int, LiveRecorder] = {}
+        # 침입 클립: 상시 .ts 에서 구간만 자름 (프레임 JPEG 버퍼 없음)
+        self.clippers: dict[int, IntrusionClipper] = {}
+        self.continuous_recorders: dict[int, ContinuousRecorder] = {}
+        self._record_frame_counters: dict[int, int] = {}
+        self._frame_counts: dict[int, int] = {i: 0 for i in range(1, SCREEN_COUNT + 1)}
+        self._last_heartbeat = time.perf_counter()
 
         self.file_tree = FileTree()
         self.camera_grid = CameraGrid()
@@ -74,6 +101,11 @@ class MainWindow(QMainWindow):
         self.cctv_splitter = cctv_splitter
 
         self.replay_page = ReplayPage()
+        self.replay_page.set_live_sources(
+            lambda: {
+                str(recorder.path.resolve()) for recorder in self.continuous_recorders.values()
+            }
+        )
 
         self.main_tabs = QTabWidget()
         self.main_tabs.setObjectName("mainTabs")
@@ -101,10 +133,18 @@ class MainWindow(QMainWindow):
         self.person_detection.failed.connect(self.on_detection_failed)
         self.person_detection.start()
 
+        self.clip_export_finished.connect(self.on_clip_export_finished)
+        self.clip_export_failed.connect(self.on_clip_export_failed)
+
+        self._heartbeat = QTimer(self)
+        self._heartbeat.timeout.connect(self.log_heartbeat)
+        self._heartbeat.start(_HEARTBEAT_MS)
+
         QShortcut(QKeySequence(Qt.Key.Key_Escape), self).activated.connect(self.on_escape)
 
         self.load_screen_zones(self.camera_grid.selected_index)
-        self.camera_grid.start_webcam()
+        logger.info("기본 소스 시작 (웹캠 + cam2~4)")
+        self.camera_grid.start_default_sources()
 
     def _fit_to_screen(self) -> None:
         """가용 화면의 약 92% 크기로 맞추고 가운데 배치한다."""
@@ -117,6 +157,28 @@ class MainWindow(QMainWindow):
         self.move(
             screen.x() + (screen.width() - width) // 2,
             screen.y() + (screen.height() - height) // 2,
+        )
+
+    @Slot()
+    def log_heartbeat(self) -> None:
+        now = time.perf_counter()
+        elapsed = max(0.001, now - self._last_heartbeat)
+        self._last_heartbeat = now
+        parts = []
+        for screen_index in range(1, SCREEN_COUNT + 1):
+            count = self._frame_counts.get(screen_index, 0)
+            self._frame_counts[screen_index] = 0
+            fps = count / elapsed
+            recording = self.continuous_recorders.get(screen_index)
+            written = recording.written if recording is not None else 0
+            parts.append(f"CAM{screen_index}={fps:.1f}fps/rec={written}")
+        clip_pending = [i for i, c in self.clippers.items() if c.pending]
+        logger.info(
+            "heartbeat %.1fs %s clip_pending=%s tab=%d",
+            elapsed,
+            " ".join(parts),
+            clip_pending,
+            self.main_tabs.currentIndex(),
         )
 
     @Slot()
@@ -144,13 +206,14 @@ class MainWindow(QMainWindow):
 
     @Slot(int, str)
     def on_source_opened(self, screen_index: int, source: str) -> None:
-        del source
-        self.finish_live_recording(screen_index)
+        logger.info("CAM%d 소스 열림: %s", screen_index, source)
+        # 클립은 상시 .ts 가 아직 열려 있을 때 자른다
+        self.finish_intrusion_clip(screen_index)
+        self.stop_continuous_recording(screen_index)
         video = self.camera_grid.video(screen_index)
         monitor = self.monitors[screen_index]
 
-        # 화면별 구역은 유지 — 체류/경보만 리셋 후 구역 다시 적용
-        zones = load_zones(screen_zone_path(screen_index))
+        zones = video.zones_for_process(load_zones(screen_zone_path(screen_index)))
         monitor.reset()
         state = monitor.set_zones(zones)
         video.set_zones(
@@ -161,8 +224,11 @@ class MainWindow(QMainWindow):
         )
         video.set_monitor_state(state)
 
-        if video.live:
-            self.live_recorders[screen_index] = LiveRecorder()
+        self.start_continuous_recording(screen_index)
+        self.clippers[screen_index] = IntrusionClipper(
+            output_dir=screen_recordings_dir(screen_index),
+            get_recording=lambda i=screen_index: self.continuous_recorders.get(i),
+        )
 
         if screen_index == self.camera_grid.selected_index:
             self.loading_zones = True
@@ -174,7 +240,9 @@ class MainWindow(QMainWindow):
 
     @Slot(int)
     def on_source_lost(self, screen_index: int) -> None:
-        self.finish_live_recording(screen_index)
+        logger.warning("CAM%d 소스 끊김", screen_index)
+        self.finish_intrusion_clip(screen_index)
+        self.stop_continuous_recording(screen_index)
         self.camera_grid.video(screen_index).close_video()
         self.monitors[screen_index].reset()
         if screen_index == 1:
@@ -186,15 +254,48 @@ class MainWindow(QMainWindow):
 
     @Slot(int, object, int)
     def on_frame_ready(self, screen_index: int, frame, frame_index: int) -> None:
+        t0 = time.perf_counter()
+        self._frame_counts[screen_index] = self._frame_counts.get(screen_index, 0) + 1
         self.person_detection.submit(frame, frame_index, screen_index)
-        recorder = self.live_recorders.get(screen_index)
-        if recorder is None:
-            return
         video = self.camera_grid.video(screen_index)
-        try:
-            recorder.add_frame(frame, frame_index / video.fps)
-        except OSError as error:
-            self.on_live_record_failed(screen_index, error)
+        time_sec = frame_index / video.fps if video.fps > 0 else 0.0
+
+        continuous = self.continuous_recorders.get(screen_index)
+        if continuous is not None:
+            count = self._record_frame_counters.get(screen_index, 0) + 1
+            self._record_frame_counters[screen_index] = count
+            if count % RECORD_FRAME_STRIDE == 0:
+                try:
+                    overlaid = compose_overlay_frame(
+                        frame,
+                        video.zones,
+                        video.detections,
+                        video.monitor_state,
+                        selected_index=video.selected_zone,
+                    )
+                    continuous.write(overlaid, video_time_sec=time_sec)
+                except OSError as error:
+                    logger.exception("CAM%d 상시녹화 실패", screen_index)
+                    self.on_continuous_record_failed(screen_index, error)
+
+        clipper = self.clippers.get(screen_index)
+        if clipper is not None:
+            try:
+                job = clipper.tick(time_sec)
+                if job is not None:
+                    self.start_clip_export(screen_index, job)
+            except OSError as error:
+                logger.exception("CAM%d 클립 tick 실패", screen_index)
+                self.on_intrusion_clip_failed(screen_index, error)
+
+        elapsed = time.perf_counter() - t0
+        if elapsed >= _SLOW_FRAME_SEC:
+            logger.warning(
+                "CAM%d on_frame_ready 지연 %.0fms frame=%d",
+                screen_index,
+                elapsed * 1000,
+                frame_index,
+            )
 
     def load_screen_zones(self, screen_index: int) -> None:
         path = screen_zone_path(screen_index)
@@ -209,16 +310,17 @@ class MainWindow(QMainWindow):
                 f"{path}\n{error}",
             )
 
+        video = self.camera_grid.video(screen_index)
+        zones = video.zones_for_process(zones)
+        state = self.monitors[screen_index].set_zones(zones)
+        video.set_zones(zones, self.zone_panel.selected_index())
+        video.set_monitor_state(state)
+
         self.loading_zones = True
         try:
             self.zone_panel.set_zones(zones)
         finally:
             self.loading_zones = False
-
-        state = self.monitors[screen_index].set_zones(zones)
-        video = self.camera_grid.video(screen_index)
-        video.set_zones(zones, self.zone_panel.selected_index())
-        video.set_monitor_state(state)
         self.zone_panel.zone_button.setEnabled(True)
 
     @Slot(list)
@@ -227,8 +329,9 @@ class MainWindow(QMainWindow):
             return
         screen_index = self.camera_grid.selected_index
         path = screen_zone_path(screen_index)
+        stored = self.camera_grid.video(screen_index).zones_for_storage(zones)
         try:
-            save_zones(path, zones)
+            save_zones(path, stored)
         except OSError as error:
             QMessageBox.warning(
                 self,
@@ -239,9 +342,7 @@ class MainWindow(QMainWindow):
     def update_zone_overlay(self) -> None:
         screen_index = self.camera_grid.selected_index
         zones = self.zone_panel.zones
-        self.camera_grid.video(screen_index).set_zones(
-            zones, self.zone_panel.selected_index()
-        )
+        self.camera_grid.video(screen_index).set_zones(zones, self.zone_panel.selected_index())
         state = self.monitors[screen_index].set_zones(zones)
         self.camera_grid.video(screen_index).set_monitor_state(state)
 
@@ -254,9 +355,11 @@ class MainWindow(QMainWindow):
                 "먼저 화면에 영상(또는 웹캠)이 재생 중이어야 합니다.",
             )
             return
-        # 실시간 CCTV: 구역 편집 중에도 재생을 멈추지 않는다
+        # 구역 편집 중에도 CCTV 재생은 계속한다 (일시정지하지 않음)
         self.set_edit_mode(True)
         video.start_drawing()
+        if not video.is_playing():
+            video.play()
         self.zone_edit_started.emit()
 
     def apply_zone_edit(self) -> None:
@@ -294,52 +397,163 @@ class MainWindow(QMainWindow):
         monitor = self.monitors[screen_index]
         state = monitor.update(detections, frame_index, video.fps)
 
-        recorder = self.live_recorders.get(screen_index)
-        if recorder is not None:
+        if state == MonitorState.ALARM and monitor.new_events:
+            logger.info(
+                "CAM%d 경보 사건 %d건 frame=%d",
+                screen_index,
+                len(monitor.new_events),
+                frame_index,
+            )
+        elif state == MonitorState.ALARM:
+            pass
+        elif monitor.new_events:
+            logger.info(
+                "CAM%d 경보 해제 기록 %d건 state=%s",
+                screen_index,
+                len(monitor.new_events),
+                state,
+            )
+
+        clipper = self.clippers.get(screen_index)
+        if clipper is not None:
             try:
-                recorder.update(
+                clipper.update(
                     state == MonitorState.ALARM,
-                    frame_index / video.fps,
+                    frame_index / video.fps if video.fps > 0 else 0.0,
                     monitor.new_events,
                 )
             except OSError as error:
-                self.on_live_record_failed(screen_index, error)
-        elif monitor.new_events and video.source_path:
-            try:
-                save_event_records(monitor.new_events, video.source_path)
-            except OSError as error:
-                QMessageBox.warning(
-                    self,
-                    "사건 저장 실패",
-                    f"침입 사건 클립/CSV를 저장할 수 없습니다.\n\n{error}",
-                )
+                logger.exception("CAM%d 클립 update 실패", screen_index)
+                self.on_intrusion_clip_failed(screen_index, error)
 
         video.set_detections(frame_index, detections)
         video.set_monitor_state(state)
 
-    def finish_live_recording(self, screen_index: int) -> None:
-        recorder = self.live_recorders.pop(screen_index, None)
+    def start_continuous_recording(self, screen_index: int) -> None:
+        video = self.camera_grid.video(screen_index)
+        width, height = video.frame_size()
+        width, height = _record_frame_size(width, height)
+        if width <= 0 or height <= 0:
+            logger.warning("CAM%d 상시녹화 스킵 (해상도 %dx%d)", screen_index, width, height)
+            return
+        self._record_frame_counters[screen_index] = 0
+        try:
+            self.continuous_recorders[screen_index] = ContinuousRecorder(
+                screen_index,
+                width,
+                height,
+                max(1.0, video.fps / RECORD_FRAME_STRIDE),
+                recordings_dir=screen_recordings_dir(screen_index),
+            )
+            logger.info(
+                "CAM%d 상시녹화 시작 %dx%d @%.1ffps → %s",
+                screen_index,
+                width,
+                height,
+                video.fps,
+                self.continuous_recorders[screen_index].path.name,
+            )
+        except OSError as error:
+            logger.exception("CAM%d 상시녹화 시작 실패", screen_index)
+            QMessageBox.warning(
+                self,
+                "상시 녹화 실패",
+                f"CAM{screen_index} 상시 녹화를 시작하지 못했습니다.\n\n{error}",
+            )
+
+    def stop_continuous_recording(self, screen_index: int) -> None:
+        self._record_frame_counters.pop(screen_index, None)
+        recorder = self.continuous_recorders.pop(screen_index, None)
         if recorder is None:
             return
         try:
-            recorder.finish(self.monitors[screen_index].close_alarms())
+            path = recorder.close()
+            logger.info("CAM%d 상시녹화 종료 path=%s", screen_index, path)
         except OSError as error:
+            logger.exception("CAM%d 상시녹화 종료 오류", screen_index)
+            QMessageBox.warning(
+                self,
+                "상시 녹화 종료 오류",
+                f"CAM{screen_index} 상시 녹화 파일을 닫는 중 오류가 났습니다.\n\n{error}",
+            )
+
+    def on_continuous_record_failed(self, screen_index: int, error: OSError) -> None:
+        recorder = self.continuous_recorders.pop(screen_index, None)
+        if recorder is not None:
+            try:
+                recorder.close()
+            except OSError:
+                pass
+        QMessageBox.warning(
+            self,
+            "상시 녹화 중단",
+            f"CAM{screen_index} 상시 녹화를 멈춥니다.\n\n{error}",
+        )
+
+    def start_clip_export(self, screen_index: int, job: ClipExportJob) -> None:
+        """ffmpeg 클립 저장은 UI를 막지 않도록 백그라운드에서 실행."""
+        logger.info(
+            "CAM%d 클립 export 백그라운드 시작 events=%d source=%s",
+            screen_index,
+            len(job.events),
+            job.source.name,
+        )
+
+        def work() -> None:
+            try:
+                csv_path = run_clip_export(job)
+                self.clip_export_finished.emit(screen_index, csv_path)
+            except Exception as error:
+                logger.exception("CAM%d 클립 export 실패", screen_index)
+                self.clip_export_failed.emit(screen_index, str(error))
+
+        threading.Thread(target=work, name=f"clip-export-cam{screen_index}", daemon=True).start()
+
+    @Slot(int, object)
+    def on_clip_export_finished(self, screen_index: int, csv_path) -> None:
+        clipper = self.clippers.get(screen_index)
+        if clipper is not None:
+            clipper.mark_export_done()
+        logger.info("CAM%d 클립 export 완료 csv=%s", screen_index, csv_path)
+
+    @Slot(int, str)
+    def on_clip_export_failed(self, screen_index: int, message: str) -> None:
+        clipper = self.clippers.get(screen_index)
+        if clipper is not None:
+            clipper.mark_export_done()
+        logger.error("CAM%d 클립 export 실패: %s", screen_index, message)
+        QMessageBox.warning(
+            self,
+            "사건 저장 실패",
+            f"침입 사건 클립/CSV를 저장할 수 없습니다.\n\n{message}",
+        )
+
+    def finish_intrusion_clip(self, screen_index: int) -> None:
+        clipper = self.clippers.pop(screen_index, None)
+        if clipper is None:
+            return
+        try:
+            logger.info("CAM%d 클립 동기 종료(소스 교체/종료)", screen_index)
+            clipper.finish(self.monitors[screen_index].close_alarms())
+        except OSError as error:
+            logger.exception("CAM%d 클립 동기 저장 실패", screen_index)
             QMessageBox.warning(
                 self,
                 "사건 저장 실패",
                 f"침입 사건 클립/CSV를 저장할 수 없습니다.\n\n{error}",
             )
 
-    def on_live_record_failed(self, screen_index: int, error: OSError) -> None:
-        self.live_recorders.pop(screen_index, None)
+    def on_intrusion_clip_failed(self, screen_index: int, error: OSError) -> None:
+        self.clippers.pop(screen_index, None)
         QMessageBox.warning(
             self,
             "사건 저장 실패",
-            f"실시간 사건 저장을 멈춰습니다.\n\n{error}",
+            f"침입 클립 저장을 멈춥니다.\n\n{error}",
         )
 
     @Slot(str)
     def on_detection_failed(self, message: str) -> None:
+        logger.error("사람 탐지 실패: %s", message)
         QMessageBox.warning(
             self,
             "사람 탐지 불가",
@@ -347,8 +561,12 @@ class MainWindow(QMainWindow):
         )
 
     def closeEvent(self, event) -> None:
-        for screen_index in list(self.live_recorders):
-            self.finish_live_recording(screen_index)
+        logger.info("앱 종료 — 클립/녹화 정리")
+        self._heartbeat.stop()
+        for screen_index in list(self.clippers):
+            self.finish_intrusion_clip(screen_index)
+        for screen_index in list(self.continuous_recorders):
+            self.stop_continuous_recording(screen_index)
         self.camera_grid.close_all()
         self.person_detection.stop()
         super().closeEvent(event)

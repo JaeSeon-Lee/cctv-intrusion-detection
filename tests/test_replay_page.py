@@ -1,25 +1,21 @@
 from pathlib import Path
 
-from cctv_intrusion.ui.widget.replay_page import clips_dir_for, list_related_clips
+from cctv_intrusion.ui.widget.replay_page import list_intrusion_clips
 
 
-def test_clips_dir_for_uses_stem_folder(tmp_path: Path):
-    video = tmp_path / "cam1.mp4"
-    assert clips_dir_for(video) == tmp_path / "cam1"
+def test_list_intrusion_clips_per_cam_folder(tmp_path: Path):
+    cam2 = tmp_path / "cam2"
+    cam4 = tmp_path / "cam4"
+    cam2.mkdir()
+    cam4.mkdir()
+    (cam2 / "test_2_1.mp4").write_bytes(b"a")
+    (cam4 / "live_1.mp4").write_bytes(b"b")
+    (cam2 / "20260928.ts").write_bytes(b"c")
+    (cam2 / "events.csv").write_text("x")
+
+    clips = list_intrusion_clips(recordings_dir=tmp_path)
+    assert [path.name for path in clips] == ["test_2_1.mp4", "live_1.mp4"]
 
 
-def test_list_related_clips(tmp_path: Path):
-    video = tmp_path / "cam1.mp4"
-    video.write_bytes(b"x")
-    folder = tmp_path / "cam1"
-    folder.mkdir()
-    (folder / "event_1.mp4").write_bytes(b"a")
-    (folder / "event_2.mp4").write_bytes(b"b")
-    (folder / "notes.txt").write_text("no")
-
-    clips = list_related_clips(video)
-    assert [path.name for path in clips] == ["event_1.mp4", "event_2.mp4"]
-
-
-def test_list_related_clips_missing_folder(tmp_path: Path):
-    assert list_related_clips(tmp_path / "none.mp4") == []
+def test_list_intrusion_clips_missing(tmp_path: Path):
+    assert list_intrusion_clips(recordings_dir=tmp_path / "none") == []

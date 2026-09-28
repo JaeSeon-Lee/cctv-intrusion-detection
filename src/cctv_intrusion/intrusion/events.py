@@ -1,8 +1,7 @@
 """침입 사건 CSV 기록.
 
-동영상 stem 과 같은 이름으로 OUTPUT_DIR 에 저장한다.
-예: data/cctv/cam1.mp4 → data/output/cam1.csv
-클립: data/output/cam1_1.mp4, cam1_2.mp4, ...
+캠별 폴더(recordings/camN/)에는 events.csv 한 파일에 사건을 누적한다.
+클립: 같은 폴더의 {원본_stem}_N.mp4 또는 live_*.mp4
 """
 
 from __future__ import annotations
@@ -16,9 +15,10 @@ from cctv_intrusion.intrusion.criteria import (
     EVENT_CLIP_BEFORE_SEC,
     EVENT_CSV_FIELDS,
 )
-from cctv_intrusion.paths import OUTPUT_DIR
+from cctv_intrusion.paths import OUTPUT_DIR, RECORDINGS_DIR
 
 EVENTS_CSV_SUFFIX = ".csv"
+CAM_EVENTS_CSV_NAME = "events.csv"
 
 
 def format_video_timestamp(seconds: float) -> str:
@@ -30,6 +30,14 @@ def format_video_timestamp(seconds: float) -> str:
     if hours:
         return f"{hours}:{minutes:02d}:{secs:02d}.{ms:03d}"
     return f"{minutes:02d}:{secs:02d}.{ms:03d}"
+
+
+def is_screen_recording_dir(directory: Path) -> bool:
+    """recordings/camN/ 형태인지."""
+    if directory.parent != RECORDINGS_DIR:
+        return False
+    name = directory.name
+    return name.startswith("cam") and name[3:].isdigit()
 
 
 @dataclass(slots=True)
@@ -94,9 +102,12 @@ def events_csv_path(
     *,
     output_dir: Path | None = None,
 ) -> Path:
-    """동영상과 같은 stem 의 CSV 경로 (OUTPUT_DIR / '{stem}.csv')."""
+    """CSV 경로. recordings/camN/ 이면 events.csv, 그 외는 {stem}.csv."""
+    directory = output_dir or OUTPUT_DIR
+    if is_screen_recording_dir(directory):
+        return directory / CAM_EVENTS_CSV_NAME
     stem = Path(video_path).stem
-    return (output_dir or OUTPUT_DIR) / f"{stem}{EVENTS_CSV_SUFFIX}"
+    return directory / f"{stem}{EVENTS_CSV_SUFFIX}"
 
 
 def append_events(
@@ -105,7 +116,7 @@ def append_events(
     *,
     output_dir: Path | None = None,
 ) -> Path | None:
-    """사건을 해당 동영상 CSV 에 이어 쓴다. 파일이 없으면 헤더를 만든다."""
+    """사건을 CSV 에 이어 쓴다. 파일이 없으면 헤더를 만든다."""
     if not events:
         return None
 

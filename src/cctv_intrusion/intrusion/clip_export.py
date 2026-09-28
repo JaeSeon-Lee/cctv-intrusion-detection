@@ -1,7 +1,7 @@
 """침입 사건 클립 영상 저장.
 
 경보 이전 3초 ~ 해제 이후 5초를 원본에서 잘라
-OUTPUT_DIR / '{stem}_{n}.mp4' 로 저장한다.
+recordings/camN / '{stem}_{n}.mp4' 로 저장한다.
 """
 
 from __future__ import annotations

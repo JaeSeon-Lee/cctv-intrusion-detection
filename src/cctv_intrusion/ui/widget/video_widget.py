@@ -1,5 +1,7 @@
 import time
+from pathlib import Path
 
+import cv2
 from PySide6.QtCore import Qt, QTimer, Signal, Slot
 from PySide6.QtGui import QImage, QKeySequence, QPixmap, QShortcut
 from PySide6.QtWidgets import QMessageBox, QSizePolicy, QVBoxLayout, QWidget
@@ -15,12 +17,28 @@ from cctv_intrusion.ui.widget.video_overlay import (
     draw_zones,
 )
 from cctv_intrusion.video import CameraCapture, VideoRender
+from cctv_intrusion.video.playback_snapshot import cleanup_snapshot
 from cctv_intrusion.zone import Zone
 
 DEFAULT_FPS = 30
 MAX_LIVE_FPS = 60
 SEEK_SECONDS = 5
 POINT_HIT_RADIUS = 10
+# CCTV 칸: 4K 등 고해상도는 여기서 줄여 재생·탐지·녹화 (MB가 아니라 픽셀이 렉 원인)
+MAX_CCTV_WIDTH = 1280
+
+
+def _scale_zones(zones: list[Zone], scale: float) -> list[Zone]:
+    if abs(scale - 1.0) < 1e-6:
+        return list(zones)
+    return [
+        Zone(
+            name=zone.name,
+            level=zone.level,
+            points=[(int(round(x * scale)), int(round(y * scale))) for x, y in zone.points],
+        )
+        for zone in zones
+    ]
 
 
 class VideoWidget(QWidget):
@@ -34,10 +52,14 @@ class VideoWidget(QWidget):
     source_lost = Signal()  # 웹캠 연결이 끊김
     frame_ready = Signal(object, int)  # (BGR frame, frame_index)
 
-    def __init__(self, *, compact: bool = False) -> None:
+    def __init__(self, *, compact: bool = False, paint_overlays: bool = True) -> None:
         super().__init__()
 
         self.compact = compact
+        # CCTV 칸(compact): 파일도 관제처럼 반복 재생. 다시보기는 한 번만.
+        self.loop = compact
+        # 다시보기: 녹화본에 구역·상태 배지가 이미 들어가 있어 중복 표시하지 않음
+        self.paint_overlays = paint_overlays
         self.render: VideoRender | CameraCapture | None = None
         self.live = False
         self.live_elapsed_sec = 0.0  # 일시정지 전까지 흐른 시간
@@ -49,6 +71,9 @@ class VideoWidget(QWidget):
         self.controls_enabled = True
         self.was_playing = False
         self.current_pixmap: QPixmap | None = None
+        self.native_width = 0
+        self.native_height = 0
+        self.process_scale = 1.0
 
         self.zones: list[Zone] = []
         self.selected_zone = -1
@@ -61,6 +86,8 @@ class VideoWidget(QWidget):
         self.view_offset_x = 0.0
         self.view_offset_y = 0.0
         self.source_path: str | None = None  # 파일 경로 (웹캠이면 None)
+        # 녹화 중 .ts 스냅샷 등, close_video 때 지울 임시 파일
+        self._owned_temp: Path | None = None
 
         self.label = VideoLabel("영상 없음")
         self.label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -102,13 +129,14 @@ class VideoWidget(QWidget):
 
         self.update_control_state()
 
-    def set_video(self, path: str) -> bool:
-        return self.open_source(path)
+    def set_video(self, path: str, *, owned_temp: str | Path | None = None) -> bool:
+        return self.open_source(path, owned_temp=owned_temp)
 
-    def open_source(self, source: str) -> bool:
+    def open_source(self, source: str, *, owned_temp: str | Path | None = None) -> bool:
         render = VideoRender(source)
         if not render.is_opened():
             render.release()
+            cleanup_snapshot(Path(owned_temp) if owned_temp else None)
             QMessageBox.critical(self, "열기 실패", f"영상을 열 수 없습니다.\n{source}")
             return False
 
@@ -116,9 +144,14 @@ class VideoWidget(QWidget):
         self.render = render
         self.live = False
         self.source_path = str(source)
+        self._owned_temp = Path(owned_temp) if owned_temp else None
         self.controls.set_live(False)
         self.fps = render.get_fps() or DEFAULT_FPS
         self.frame_count = render.get_frame_count()
+        self.native_width, self.native_height = render.get_frame_size()
+        self.process_scale = 1.0
+        if self.compact and self.native_width > MAX_CCTV_WIDTH:
+            self.process_scale = MAX_CCTV_WIDTH / self.native_width
 
         self.controls.slider.blockSignals(True)
         self.controls.slider.setRange(0, max(0, self.frame_count - 1))
@@ -154,6 +187,10 @@ class VideoWidget(QWidget):
         self.controls.set_live(True)
         fps = camera.get_fps()
         self.fps = fps if 0 < fps <= MAX_LIVE_FPS else DEFAULT_FPS
+        self.native_width, self.native_height = camera.get_frame_size()
+        self.process_scale = 1.0
+        if self.compact and self.native_width > MAX_CCTV_WIDTH:
+            self.process_scale = MAX_CCTV_WIDTH / self.native_width
         camera.start()
 
         self.update_control_state()
@@ -162,15 +199,20 @@ class VideoWidget(QWidget):
         return True
 
     def close_video(self) -> None:
-        self.pause()
+        self.pause(force=True)
         if self.render is not None:
             self.render.release()
             self.render = None
+        cleanup_snapshot(self._owned_temp)
+        self._owned_temp = None
         self.live = False
         self.source_path = None
         self.frame_index = -1
         self.frame_count = 0
         self.at_end = False
+        self.native_width = 0
+        self.native_height = 0
+        self.process_scale = 1.0
         self.current_pixmap = None
         self.detections = []
         self.label.clear()
@@ -178,9 +220,25 @@ class VideoWidget(QWidget):
         self.update_control_state()
 
     def frame_size(self) -> tuple[int, int]:
-        if self.render is None:
-            return 0, 0
-        return self.render.get_frame_size()
+        if self.native_width <= 0 or self.native_height <= 0:
+            if self.render is None:
+                return 0, 0
+            return self.render.get_frame_size()
+        if self.process_scale < 1.0:
+            width = int(self.native_width * self.process_scale)
+            height = int(self.native_height * self.process_scale)
+            return width - (width % 2), height - (height % 2)
+        return self.native_width, self.native_height
+
+    def zones_for_process(self, zones: list[Zone]) -> list[Zone]:
+        """JSON(원본 해상도) 좌표 → 실제 처리 해상도 좌표."""
+        return _scale_zones(zones, self.process_scale)
+
+    def zones_for_storage(self, zones: list[Zone]) -> list[Zone]:
+        """처리 해상도 좌표 → JSON 저장용 원본 해상도 좌표."""
+        if self.process_scale <= 0:
+            return list(zones)
+        return _scale_zones(zones, 1.0 / self.process_scale)
 
     def is_playing(self) -> bool:
         return self.timer.isActive()
@@ -209,13 +267,18 @@ class VideoWidget(QWidget):
     def on_speed_changed(self) -> None:
         self.set_playback_speed(self.controls.playback_speed())
 
-    def pause(self) -> None:
+    def pause(self, *, force: bool = False) -> None:
+        # 위험구역 꼭짓점을 찍는 동안에는 재생을 멈추지 않는다
+        if self.drawing and not force:
+            return
         if self.live and self.is_playing():
             self.live_elapsed_sec += time.monotonic() - self.live_resumed_at
         self.timer.stop()
         self.controls.set_playing(False)
 
     def toggle_play(self) -> None:
+        if self.drawing:
+            return
         if self.is_playing():
             self.pause()
         else:
@@ -229,7 +292,7 @@ class VideoWidget(QWidget):
             if not ret:
                 # 아직 새 프레임이 없으면 다음 타이머에서 다시 본다
                 if self.render.lost:
-                    self.pause()
+                    self.pause(force=True)
                     self.source_lost.emit()
                 return
             elapsed = self.live_elapsed_sec + time.monotonic() - self.live_resumed_at
@@ -237,6 +300,18 @@ class VideoWidget(QWidget):
             self.handle_frame(frame)
             return
         if not ret:
+            if self.loop or self.drawing:
+                self.render.seek_frame(0)
+                ret, frame = self.render.read()
+                if not ret:
+                    self.at_end = True
+                    self.pause(force=True)
+                    return
+                # 시각(frame_index)은 계속 증가 — 침입 체류·클립 타임라인 유지
+                self.frame_index += 1
+                self.at_end = False
+                self.handle_frame(frame)
+                return
             self.at_end = True
             self.pause()
             return
@@ -244,10 +319,14 @@ class VideoWidget(QWidget):
         self.handle_frame(frame)
 
     def step_frame(self) -> None:
+        if self.drawing:
+            return
         self.pause()
         self.next_frame()
 
     def prev_frame(self) -> None:
+        if self.drawing:
+            return
         self.pause()
         if self.frame_index > 0:
             self.go_to_frame(self.frame_index - 1)
@@ -277,14 +356,22 @@ class VideoWidget(QWidget):
         self.handle_frame(frame)
 
     def on_slider_pressed(self) -> None:
+        if self.drawing:
+            return
         self.was_playing = self.is_playing()
         self.pause()
 
     def on_slider_released(self) -> None:
+        if self.drawing:
+            return
         if self.was_playing:
             self.play()
 
     def handle_frame(self, frame) -> None:
+        if self.process_scale < 1.0:
+            width, height = self.frame_size()
+            if width > 0 and height > 0:
+                frame = cv2.resize(frame, (width, height), interpolation=cv2.INTER_AREA)
         self.show_frame(frame)
         self.update_position()
         self.frame_ready.emit(frame, self.frame_index)
@@ -310,16 +397,17 @@ class VideoWidget(QWidget):
         self.view_offset_x = (self.label.width() - scaled.width()) / 2
         self.view_offset_y = (self.label.height() - scaled.height()) / 2
 
-        draw_zones(
-            scaled,
-            self.zones,
-            selected_index=self.selected_zone,
-            scale=self.view_scale,
-            drawing=self.drawing,
-            drawing_points=self.drawing_points,
-        )
-        draw_detections(scaled, self.detections, self.view_scale)
-        draw_monitor_state(scaled, self.monitor_state)
+        if self.paint_overlays:
+            draw_zones(
+                scaled,
+                self.zones,
+                selected_index=self.selected_zone,
+                scale=self.view_scale,
+                drawing=self.drawing,
+                drawing_points=self.drawing_points,
+            )
+            draw_detections(scaled, self.detections, self.view_scale)
+            draw_monitor_state(scaled, self.monitor_state)
         self.label.setPixmap(scaled)
 
     def update_position(self) -> None:
@@ -340,6 +428,9 @@ class VideoWidget(QWidget):
         self.dragging_point = -1
         self.label.setMouseTracking(True)
         self.label.setCursor(Qt.CursorShape.CrossCursor)
+        # 구역 편집 시작 시 재생 유지
+        if self.render is not None and not self.is_playing():
+            self.play()
         self.update_label()
 
     def finish_drawing(self) -> list[tuple[int, int]]:
@@ -451,6 +542,8 @@ class VideoWidget(QWidget):
             self.controls.set_time(0, 0)
 
     def on_space_key(self) -> None:
+        if self.drawing:
+            return
         if self.controls.play_button.isEnabled():
             self.toggle_play()
 
