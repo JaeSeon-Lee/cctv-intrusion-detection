@@ -6,8 +6,16 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DATA_DIR = PROJECT_ROOT / "data"
 CCTV_DIR = DATA_DIR / "cctv"  # CCTV 탭에서 재생할 영상
 SCREENS_DIR = CCTV_DIR / "screens"  # 화면(슬롯)별 위험구역 JSON
-RECORDINGS_DIR = DATA_DIR / "recordings"  # 상시 녹화본 (.ts, 다시보기 탭)
-OUTPUT_DIR = DATA_DIR / "output"  # 침입 클립·CSV
+OUTPUT_DIR = DATA_DIR / "output"  # (레거시/기타) 침입 클립은 recordings/ 의 .mp4 사용
+RECORDINGS_DIR = DATA_DIR / "recordings"  # cam1~cam4 하위에 상시 .ts · 침입 .mp4 · events.csv
 MODELS_DIR = PROJECT_ROOT / "models"  # YOLO 모델 (최초 실행 때 자동 다운로드, 커밋 안 함)
 
 SCREEN_COUNT = 4
+
+
+def screen_recordings_dir(screen_index: int, *, create: bool = True) -> Path:
+    """CAM N 상시 녹화·침입 클립·CSV 폴더 (recordings/camN/)."""
+    path = RECORDINGS_DIR / f"cam{screen_index}"
+    if create:
+        path.mkdir(parents=True, exist_ok=True)
+    return path

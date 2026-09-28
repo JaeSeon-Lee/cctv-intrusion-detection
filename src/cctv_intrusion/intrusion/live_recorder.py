@@ -5,8 +5,8 @@
 
 - 경보 이전 3초: 버퍼에서 꺼내 쓴다
 - 경보 해제 이후 5초: 계속 쓰다가 닫는다 (그 사이 다시 경보가 울리면 같은 클립에 이어 쓴다)
-- 클립: OUTPUT_DIR / 'live_YYYYmmdd_HHMMSS.mp4' (녹화 시작 시각)
-- CSV: 클립과 같은 이름의 .csv. 시각은 클립 영상 안의 시각이다 (저장된 동영상 CSV 와 같은 방식)
+- 클립: recordings/camN / 'live_YYYYmmdd_HHMMSS.mp4'
+- CSV: 클립과 같은 이름의 .csv
 """
 
 from __future__ import annotations

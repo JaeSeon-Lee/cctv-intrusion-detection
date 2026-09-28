@@ -13,13 +13,12 @@ from cctv_intrusion.video.continuous_recorder import (
 STARTED_AT = datetime(2026, 9, 28, 20, 0, 0)
 
 
-def test_recording_path_uses_cam_and_datetime(tmp_path: Path):
-    first = recording_path(1, STARTED_AT, recordings_dir=tmp_path)
-    assert first.name == "cam1_20260928_200000.ts"
+def test_recording_path_uses_cam_dir_and_datetime(tmp_path: Path):
+    cam_dir = tmp_path / "cam1"
+    first = recording_path(1, STARTED_AT, recordings_dir=cam_dir)
+    assert first == cam_dir / "20260928_200000.ts"
     first.write_bytes(b"x")
-    assert recording_path(1, STARTED_AT, recordings_dir=tmp_path).name == (
-        "cam1_20260928_200000_2.ts"
-    )
+    assert recording_path(1, STARTED_AT, recordings_dir=cam_dir).name == "20260928_200000_2.ts"
 
 
 @pytest.mark.skipif(find_ffmpeg() is None, reason="ffmpeg 필요")

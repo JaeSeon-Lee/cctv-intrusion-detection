@@ -3,7 +3,7 @@
 ffmpeg 에 raw BGR 프레임을 stdin 으로 넘겨 `.ts` 로 저장한다.
 MPEG-TS 는 스트림형이라 쓰기 중에도 다시보기에서 재생하기 쉽다.
 
-파일: RECORDINGS_DIR / 'cam{N}_{YYYYmmdd_HHMMSS}.ts'
+파일: RECORDINGS_DIR / 'cam{N}' / '{YYYYmmdd_HHMMSS}.ts'
 침입 사건 클립(OUTPUT_DIR 의 mp4)과 역할이 다르다.
 오버레이(박스·구역·경보)는 호출 측에서 프레임에 그린 뒤 write 한다.
 """
@@ -19,7 +19,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from cctv_intrusion.paths import RECORDINGS_DIR
+from cctv_intrusion.paths import screen_recordings_dir
 
 CLIP_SUFFIX = ".ts"
 DEFAULT_FPS = 30.0
@@ -32,10 +32,10 @@ def recording_path(
     *,
     recordings_dir: Path | None = None,
 ) -> Path:
-    """'cam{N}_{YYYYmmdd_HHMMSS}.ts'. 같은 초에 있으면 '_2', '_3'."""
-    directory = recordings_dir or RECORDINGS_DIR
+    """recordings/camN/{YYYYmmdd_HHMMSS}.ts. 같은 초에 있으면 '_2', '_3'."""
+    directory = recordings_dir or screen_recordings_dir(screen_index)
     directory.mkdir(parents=True, exist_ok=True)
-    stem = f"cam{screen_index}_{started_at:%Y%m%d_%H%M%S}"
+    stem = f"{started_at:%Y%m%d_%H%M%S}"
     path = directory / f"{stem}{CLIP_SUFFIX}"
     index = 2
     while path.exists():

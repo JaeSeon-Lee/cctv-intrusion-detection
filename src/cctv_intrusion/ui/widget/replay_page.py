@@ -1,7 +1,6 @@
 """다시보기 탭 UI.
 
-상단: data/recordings 상시 녹화본 (CAM 화면 그대로)
-하단: data/output 침입 사건 클립
+recordings/camN/ · 상시 .ts · 침입 .mp4 · events.csv
 """
 
 from __future__ import annotations
@@ -20,23 +19,30 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from cctv_intrusion.paths import OUTPUT_DIR, RECORDINGS_DIR
+from cctv_intrusion.paths import RECORDINGS_DIR
 from cctv_intrusion.ui.styles import load_qss
 from cctv_intrusion.ui.widget.video_widget import VideoWidget
 
-VIDEO_SUFFIXES = (".ts", ".mp4", ".avi", ".mov", ".mkv")
+CONTINUOUS_SUFFIXES = (".ts",)
+INTRUSION_SUFFIXES = (".mp4",)
+VIDEO_SUFFIXES = CONTINUOUS_SUFFIXES + INTRUSION_SUFFIXES + (".avi", ".mov", ".mkv")
 
 
-def list_intrusion_clips(*, output_dir: Path | None = None) -> list[Path]:
-    """침입 사건 클립 (OUTPUT_DIR). CSV 등은 제외."""
-    folder = output_dir or OUTPUT_DIR
-    if not folder.is_dir():
+def list_intrusion_clips(*, recordings_dir: Path | None = None) -> list[Path]:
+    """recordings/cam*/ 아래 침입 클립 .mp4."""
+    root = recordings_dir or RECORDINGS_DIR
+    if not root.is_dir():
         return []
-    return sorted(
-        path
-        for path in folder.iterdir()
-        if path.is_file() and path.suffix.lower() in VIDEO_SUFFIXES
-    )
+    clips: list[Path] = []
+    for cam_dir in sorted(root.glob("cam*")):
+        if not cam_dir.is_dir():
+            continue
+        clips.extend(
+            path
+            for path in cam_dir.iterdir()
+            if path.is_file() and path.suffix.lower() in INTRUSION_SUFFIXES
+        )
+    return sorted(clips, key=lambda p: (p.parent.name, p.name))
 
 
 class ReplayPage(QWidget):
@@ -48,12 +54,11 @@ class ReplayPage(QWidget):
         super().__init__()
 
         RECORDINGS_DIR.mkdir(parents=True, exist_ok=True)
-        OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
         root = str(RECORDINGS_DIR)
 
         self.model = QFileSystemModel()
         self.model.setRootPath(root)
-        self.model.setNameFilters([f"*{suffix}" for suffix in VIDEO_SUFFIXES])
+        self.model.setNameFilters([f"*{suffix}" for suffix in CONTINUOUS_SUFFIXES])
         self.model.setNameFilterDisables(False)
 
         self.tree = QTreeView()
@@ -67,12 +72,12 @@ class ReplayPage(QWidget):
 
         rec_title = QLabel("상시 녹화")
         rec_title.setObjectName("panelTitle")
-        rec_subtitle = QLabel("data/recordings · CAM 화면(박스·구역·경보) · .ts 상시 녹화")
+        rec_subtitle = QLabel("recordings/camN/ · .ts (캠별 폴더)")
         rec_subtitle.setObjectName("panelSubtitle")
 
         self.clips_title = QLabel("침입 클립")
         self.clips_title.setObjectName("panelTitle")
-        self.clips_subtitle = QLabel("data/output · 경보 구간 사건 클립")
+        self.clips_subtitle = QLabel("recordings/camN/ · .mp4 · events.csv")
         self.clips_subtitle.setObjectName("panelSubtitle")
 
         self.clips_list = QListWidget()
@@ -114,9 +119,7 @@ class ReplayPage(QWidget):
         self.player.label.setText("왼쪽에서 녹화본 또는 침입 클립을 선택하세요")
 
         hint = QLabel(
-            "배속은 하단 컨트롤에서 바꿀 수 있습니다.\n"
-            "상시 녹화(recordings/*.ts)와 침입 클립(output/*.mp4)은 역할이 다릅니다.\n"
-            "MPEG-TS 는 저장 중에도 재생을 시도할 수 있습니다."
+            "상시 녹화·침입 클립·사건 CSV 는 캠별 폴더(recordings/cam1 … cam4)에 저장됩니다."
         )
         hint.setObjectName("hint")
         hint.setWordWrap(True)
@@ -153,17 +156,20 @@ class ReplayPage(QWidget):
         clips = list_intrusion_clips()
         self.clips_list.clear()
         for clip in clips:
-            item = QListWidgetItem(clip.name)
+            label = f"{clip.parent.name}/{clip.name}"
+            item = QListWidgetItem(label)
             item.setData(Qt.ItemDataRole.UserRole, str(clip))
             self.clips_list.addItem(item)
         self.clips_subtitle.setText(
-            f"data/output · {len(clips)}개" if clips else "data/output · 침입 클립 없음"
+            f"recordings/camN/ · {len(clips)}개"
+            if clips
+            else "recordings/camN/ · 침입 클립 없음"
         )
 
     @Slot(object)
     def _on_recording_clicked(self, index) -> None:
         path = Path(self.model.filePath(index))
-        if path.suffix.lower() not in VIDEO_SUFFIXES:
+        if path.suffix.lower() not in CONTINUOUS_SUFFIXES:
             return
         if path.is_dir():
             return

@@ -14,7 +14,7 @@ from cctv_intrusion.intrusion import (
     MonitorState,
     save_event_records,
 )
-from cctv_intrusion.paths import OUTPUT_DIR, RECORDINGS_DIR, SCREEN_COUNT
+from cctv_intrusion.paths import OUTPUT_DIR, RECORDINGS_DIR, SCREEN_COUNT, screen_recordings_dir
 from cctv_intrusion.ui.widget.camera_grid import CameraGrid
 from cctv_intrusion.ui.widget.file_tree import FileTree
 from cctv_intrusion.ui.widget.replay_page import ReplayPage
@@ -165,7 +165,9 @@ class MainWindow(QMainWindow):
         video.set_monitor_state(state)
 
         if video.live:
-            self.live_recorders[screen_index] = LiveRecorder()
+            self.live_recorders[screen_index] = LiveRecorder(
+                output_dir=screen_recordings_dir(screen_index)
+            )
 
         self.start_continuous_recording(screen_index)
 
@@ -327,7 +329,12 @@ class MainWindow(QMainWindow):
                 self.on_live_record_failed(screen_index, error)
         elif monitor.new_events and video.source_path:
             try:
-                save_event_records(monitor.new_events, video.source_path)
+                # 침입 클립은 MP4 로 recordings/ 에 저장 (상시 .ts 와 구분)
+                save_event_records(
+                    monitor.new_events,
+                    video.source_path,
+                    output_dir=screen_recordings_dir(screen_index),
+                )
             except OSError as error:
                 QMessageBox.warning(
                     self,
@@ -349,6 +356,7 @@ class MainWindow(QMainWindow):
                 width,
                 height,
                 video.fps,
+                recordings_dir=screen_recordings_dir(screen_index),
             )
         except OSError as error:
             QMessageBox.warning(
