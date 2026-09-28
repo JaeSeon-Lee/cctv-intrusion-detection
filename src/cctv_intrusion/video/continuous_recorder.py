@@ -1,17 +1,20 @@
 """CAM 화면 상시 녹화 (MPEG-TS).
 
 ffmpeg 에 raw BGR 프레임을 stdin 으로 넘겨 `.ts` 로 저장한다.
-MPEG-TS 는 스트림형이라 쓰기 중에도 다시보기에서 재생하기 쉽다.
+MPEG-TS 는 스트림형이라 쓰기 중에도 파일을 읽을 수 있다.
+다만 OpenCV 는 연 순간의 길이만 보므로, 다시보기는 녹화 중일 때 스냅샷을 연다.
 
 파일: RECORDINGS_DIR / 'cam{N}' / '{YYYYmmdd_HHMMSS}.ts'
-침입 사건 클립(OUTPUT_DIR 의 mp4)과 역할이 다르다.
+침입 사건 클립은 이 `.ts` 에서 구간을 잘라 `live_*.mp4` 로 만든다.
 오버레이(박스·구역·경보)는 호출 측에서 프레임에 그린 뒤 write 한다.
 """
 
 from __future__ import annotations
 
+import logging
 import shutil
 import subprocess
+import time
 from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
@@ -24,6 +27,10 @@ from cctv_intrusion.paths import screen_recordings_dir
 CLIP_SUFFIX = ".ts"
 DEFAULT_FPS = 30.0
 MAX_FPS = 60.0
+# stdin write 가 이보다 길면 파이프 적체로 보고 경고
+_SLOW_WRITE_SEC = 0.05
+
+logger = logging.getLogger(__name__)
 
 
 def recording_path(
@@ -75,6 +82,8 @@ class ContinuousRecorder:
         self.screen_index = screen_index
         self.path = recording_path(screen_index, clock(), recordings_dir=recordings_dir)
         self.written = 0
+        # 첫 기록 프레임의 영상 시각(초) — 침입 클립 자를 때 오프셋
+        self.origin_video_sec: float | None = None
         self._proc: subprocess.Popen[bytes] | None = None
 
         ffmpeg = ffmpeg_bin or find_ffmpeg()
@@ -133,7 +142,7 @@ class ContinuousRecorder:
     def recording(self) -> bool:
         return self._proc is not None and self._proc.poll() is None
 
-    def write(self, frame: np.ndarray) -> None:
+    def write(self, frame: np.ndarray, *, video_time_sec: float | None = None) -> None:
         if self._proc is None or self._proc.stdin is None:
             return
         if self._proc.poll() is not None:
@@ -144,6 +153,9 @@ class ContinuousRecorder:
         if frame.ndim != 3 or frame.shape[2] != 3:
             raise OSError(f"BGR 프레임이 아닙니다: shape={frame.shape}")
 
+        if self.origin_video_sec is None and video_time_sec is not None:
+            self.origin_video_sec = float(video_time_sec)
+
         height, width = frame.shape[:2]
         if width != self.width or height != self.height:
             frame = cv2.resize(frame, (self.width, self.height), interpolation=cv2.INTER_AREA)
@@ -151,15 +163,34 @@ class ContinuousRecorder:
             frame = np.ascontiguousarray(frame)
 
         try:
+            t0 = time.perf_counter()
             self._proc.stdin.write(frame.tobytes())
-            # 디스크에 빨리 보이도록 파이프를 자주 비운다 (쓰기 중 재생)
+            # 디스크에 빨리 보이도록 파이프를 자주 비운다 (스냅샷·구간 자르기)
             if self.written % 5 == 0:
-                self._proc.stdin.flush()
+                self.flush()
+            elapsed = time.perf_counter() - t0
+            if elapsed >= _SLOW_WRITE_SEC:
+                logger.warning(
+                    "CAM%d 상시녹화 write 지연 %.0fms frame=%d path=%s",
+                    self.screen_index,
+                    elapsed * 1000,
+                    self.written,
+                    self.path.name,
+                )
         except BrokenPipeError as error:
             err = self._read_stderr()
             self.close()
             raise OSError(f"상시 녹화 쓰기에 실패했습니다: {self.path}\n{err}".strip()) from error
         self.written += 1
+
+    def flush(self) -> None:
+        """stdin 버퍼를 비워 디스크에 반영한다 (클립 자르기·다시보기 직전)."""
+        if self._proc is None or self._proc.stdin is None:
+            return
+        try:
+            self._proc.stdin.flush()
+        except Exception:
+            pass
 
     def close(self) -> Path | None:
         """녹화를 끝내고 파일 경로를 반환한다. 프레임이 없으면 파일을 지운다."""

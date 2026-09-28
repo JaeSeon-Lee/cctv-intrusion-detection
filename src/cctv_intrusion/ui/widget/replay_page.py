@@ -5,6 +5,7 @@ recordings/camN/ · 상시 .ts · 침입 .mp4 · events.csv
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 
 from PySide6.QtCore import Qt, Signal, Slot
@@ -13,6 +14,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QListWidget,
     QListWidgetItem,
+    QMessageBox,
     QSplitter,
     QTreeView,
     QVBoxLayout,
@@ -22,6 +24,7 @@ from PySide6.QtWidgets import (
 from cctv_intrusion.paths import RECORDINGS_DIR
 from cctv_intrusion.ui.styles import load_qss
 from cctv_intrusion.ui.widget.video_widget import VideoWidget
+from cctv_intrusion.video.playback_snapshot import snapshot_for_playback
 
 CONTINUOUS_SUFFIXES = (".ts",)
 INTRUSION_SUFFIXES = (".mp4",)
@@ -52,6 +55,9 @@ class ReplayPage(QWidget):
 
     def __init__(self) -> None:
         super().__init__()
+
+        # 지금 쓰는 상시 녹화 경로들 — MainWindow 가 주입
+        self._live_sources: Callable[[], set[str]] | None = None
 
         RECORDINGS_DIR.mkdir(parents=True, exist_ok=True)
         root = str(RECORDINGS_DIR)
@@ -115,7 +121,7 @@ class ReplayPage(QWidget):
         side_layout.setContentsMargins(0, 0, 0, 0)
         side_layout.addWidget(side_split)
 
-        self.player = VideoWidget(compact=False)
+        self.player = VideoWidget(compact=False, paint_overlays=False)
         self.player.label.setText("왼쪽에서 녹화본 또는 침입 클립을 선택하세요")
 
         hint = QLabel(
@@ -148,6 +154,10 @@ class ReplayPage(QWidget):
         self.setStyleSheet(load_qss("replay_page"))
         self.refresh_intrusion_clips()
 
+    def set_live_sources(self, provider: Callable[[], set[str]]) -> None:
+        """녹화 중인 상시 .ts 경로 집합을 돌려주는 콜백."""
+        self._live_sources = provider
+
     def showEvent(self, event) -> None:
         super().showEvent(event)
         self.refresh_intrusion_clips()
@@ -166,6 +176,29 @@ class ReplayPage(QWidget):
             else "recordings/camN/ · 침입 클립 없음"
         )
 
+    def _live_paths(self) -> set[str]:
+        if self._live_sources is None:
+            return set()
+        return self._live_sources()
+
+    def _play_path(self, path: Path) -> None:
+        """닫힌 파일은 원본, 녹화 중 .ts 는 스냅샷으로 재생."""
+        play = path
+        owned_temp = None
+        if path.suffix.lower() in CONTINUOUS_SUFFIXES and str(path.resolve()) in self._live_paths():
+            try:
+                owned_temp = snapshot_for_playback(path)
+                play = owned_temp
+            except OSError as error:
+                QMessageBox.warning(
+                    self,
+                    "다시보기",
+                    f"녹화 중인 파일을 재생용으로 준비하지 못했습니다.\n\n{error}",
+                )
+                return
+        self.file_selected.emit(str(path))
+        self.player.set_video(str(play), owned_temp=owned_temp)
+
     @Slot(object)
     def _on_recording_clicked(self, index) -> None:
         path = Path(self.model.filePath(index))
@@ -173,13 +206,11 @@ class ReplayPage(QWidget):
             return
         if path.is_dir():
             return
-        self.file_selected.emit(str(path))
-        self.player.set_video(str(path))
+        self._play_path(path)
         self.refresh_intrusion_clips()
 
     @Slot(object)
     def _on_clip_clicked(self, item: QListWidgetItem) -> None:
         path = item.data(Qt.ItemDataRole.UserRole)
         if path:
-            self.file_selected.emit(str(path))
-            self.player.set_video(str(path))
+            self._play_path(Path(path))

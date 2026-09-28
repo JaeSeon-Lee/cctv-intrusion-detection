@@ -33,13 +33,13 @@ python -m cctv_intrusion              # 또는 cctv-intrusion
 
 상단 탭: **CCTV** / **다시보기**
 
-- **CCTV**: 2×2 화면. CAM 1은 웹캠 자동 연결, CAM 2~4는 좌측 `data/cctv` 목록에서 영상을 골라 재생한다.
-  - 화면을 클릭해 선택한 뒤 파일을 누르면 그 화면에 할당된다.
+- **CCTV**: 2×2 화면. 시작 시 CAM 1은 웹캠, CAM 2~4는 `data/cctv/camN.mp4` 가 있으면 자동 재생.
+  - 화면을 클릭해 선택한 뒤 좌측 목록에서 파일을 누르면 그 화면에 할당된다.
   - 위험구역은 **화면 단위**로 `data/cctv/screens/screen_N.json` 에 저장된다 (영상을 바꿔도 유지).
 - 상시 녹화·침입 클립·CSV 는 캠별 폴더 `data/recordings/camN/` 에 저장된다.
   - 상시 녹화: `{YYYYmmdd_HHMMSS}.ts` (화면 오버레이 포함)
-  - 침입 클립: `live_YYYYmmdd_HHMMSS.mp4` (경보 전 3초 ~ 해제 후 5초.  
-    웹캠·파일 캠 모두 동일 — 해제 후 5초 안에 다시 경보가 나면 **같은 파일에 이어 씀**)
+  - 침입 클립: `live_YYYYmmdd_HHMMSS.mp4` — 상시 `.ts` 에서 경보 전 3초~해제 후 5초를 잘라 저장  
+    (웹캠·파일 캠 동일. 해제 후 5초 안 재경보면 **같은 구간을 늘려** 한 파일로 자름)
   - 사건 CSV: `events.csv` (경보가 **해제될 때** 한 줄 추가)
 
 #### 침입 사건 CSV (`data/recordings/camN/events.csv`)

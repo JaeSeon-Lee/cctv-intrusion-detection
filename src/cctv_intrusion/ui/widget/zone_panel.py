@@ -189,19 +189,22 @@ class ZonePanel(QWidget):
 
     def update_edit_form(self) -> None:
         index = self.selected_index()
-        can_edit = (not self._drawing) and index >= 0 and self.list.isEnabled()
+        can_edit = (
+            (not self._drawing)
+            and 0 <= index < len(self.zones)
+            and self.list.isEnabled()
+        )
         self.name_edit.setEnabled(can_edit)
         self.edit_level_combo.setEnabled(can_edit)
         self.apply_edit_button.setEnabled(can_edit)
 
         if not can_edit:
-            if index < 0:
-                self._syncing_edit = True
-                try:
-                    self.name_edit.clear()
-                    self.set_combo_level(self.edit_level_combo, DEFAULT_LEVEL_ID)
-                finally:
-                    self._syncing_edit = False
+            self._syncing_edit = True
+            try:
+                self.name_edit.clear()
+                self.set_combo_level(self.edit_level_combo, DEFAULT_LEVEL_ID)
+            finally:
+                self._syncing_edit = False
             return
 
         zone = self.zones[index]
@@ -216,7 +219,7 @@ class ZonePanel(QWidget):
         if self._syncing_edit or self._drawing:
             return
         index = self.selected_index()
-        if index < 0 or not self.list.isEnabled():
+        if not 0 <= index < len(self.zones) or not self.list.isEnabled():
             return
 
         name = self.name_edit.text().strip()

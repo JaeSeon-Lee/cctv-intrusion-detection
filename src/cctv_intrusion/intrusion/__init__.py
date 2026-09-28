@@ -15,8 +15,14 @@ from .events import (
     events_csv_path,
     format_video_timestamp,
 )
-from .live_recorder import LIVE_CLIP_PREFIX, LiveRecorder, live_clip_path
 from .monitor import STATE_LABELS, IntrusionMonitor, point_in_zone
+from .recording_clip import (
+    LIVE_CLIP_PREFIX,
+    ClipExportJob,
+    IntrusionClipper,
+    live_clip_path,
+    run_clip_export,
+)
 
 __all__ = [
     "ALERT_HOLD_SECONDS",
@@ -26,10 +32,11 @@ __all__ = [
     "EVENTS_CSV_SUFFIX",
     "MonitorState",
     "STATE_LABELS",
+    "ClipExportJob",
+    "IntrusionClipper",
     "IntrusionEvent",
     "IntrusionMonitor",
     "LIVE_CLIP_PREFIX",
-    "LiveRecorder",
     "alert_seconds_for",
     "append_events",
     "events_csv_path",
@@ -39,5 +46,6 @@ __all__ = [
     "live_clip_path",
     "next_clip_path",
     "point_in_zone",
+    "run_clip_export",
     "save_event_records",
 ]
