@@ -4,17 +4,30 @@ from PySide6.QtGui import QColor
 from cctv_intrusion.zone.levels import get_level
 
 _ZONE_LEVEL_COLORS = {
-    "caution": QColor(234, 179, 8),
-    "warning": QColor(245, 158, 11),
+    # 1 감지 → 2 주의 → 3 위험 (등급↑ = 색↑)
+    "detect": QColor(234, 179, 8),
+    "caution": QColor(245, 158, 11),
     "danger": QColor(220, 38, 38),
-    "restricted": QColor(185, 28, 28),
-    "critical": QColor(127, 29, 29),
+    # 레거시 id (json에 남아 있을 수 있음)
+    "warning": QColor(245, 158, 11),
+    "restricted": QColor(234, 179, 8),
+    "critical": QColor(185, 28, 28),
 }
 
 ZONE_SELECTED = QColor(251, 191, 36)
 ZONE_DRAWING = QColor(14, 165, 233)
 ZONE_NAME_TEXT = QColor(255, 255, 255)
 PERSON_BOX = QColor(16, 185, 129)
+ALARM_FRAME = QColor(220, 38, 38)
+
+# 영상 우측 상단 경보 상태 배지
+MONITOR_STATE_COLORS = {
+    "idle": QColor(100, 116, 139),  # 대기
+    "armed": QColor(15, 118, 110),  # 감지
+    "alarm": QColor(220, 38, 38),  # 경보
+    "cleared": QColor(217, 119, 6),  # 해제
+}
+MONITOR_STATE_TEXT = QColor(255, 255, 255)
 
 
 def zone_color(level_id: str | int | None) -> QColor:

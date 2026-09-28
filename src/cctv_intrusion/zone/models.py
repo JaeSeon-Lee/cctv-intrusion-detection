@@ -17,7 +17,8 @@ class Zone:
     """영상 위 위험구역 하나.
 
     points: 원본 프레임 픽셀 좌표
-    level: caution | warning | danger | restricted | critical
+    level: caution | danger | detect
+
     """
 
     name: str

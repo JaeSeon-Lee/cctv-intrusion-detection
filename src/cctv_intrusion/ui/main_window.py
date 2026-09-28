@@ -3,7 +3,8 @@ from pathlib import Path
 from PySide6.QtCore import Qt, Signal, Slot
 from PySide6.QtWidgets import QMainWindow, QMessageBox, QSplitter
 
-from cctv_intrusion.detection import PersonDetection
+from cctv_intrusion.detection import Detection, PersonDetection
+from cctv_intrusion.intrusion import IntrusionMonitor, save_event_records
 from cctv_intrusion.ui.widget.file_tree import FileTree
 from cctv_intrusion.ui.widget.video_widget import VideoWidget
 from cctv_intrusion.ui.widget.zone_panel import ZonePanel
@@ -69,8 +70,9 @@ class MainWindow(QMainWindow):
         self.video_widget.source_opened.connect(self.on_source_opened)
 
         self.person_detection = PersonDetection()
+        self.intrusion_monitor = IntrusionMonitor()
         self.video_widget.frame_ready.connect(self.person_detection.submit)
-        self.person_detection.detected.connect(self.video_widget.set_detections)
+        self.person_detection.detected.connect(self.on_detections)
         self.person_detection.failed.connect(self.on_detection_failed)
         self.person_detection.start()
 
@@ -78,6 +80,8 @@ class MainWindow(QMainWindow):
 
     def on_source_opened(self, source: str) -> None:
         self.person_detection.reset()
+        self.intrusion_monitor.reset()
+        self.video_widget.set_monitor_state(self.intrusion_monitor.state)
         self.zone_panel.zone_button.setEnabled(True)
         self.video_path = Path(source)
         self.load_zone_file()
@@ -175,7 +179,27 @@ class MainWindow(QMainWindow):
             )
 
     def update_zone_overlay(self) -> None:
-        self.video_widget.set_zones(self.zone_panel.zones, self.zone_panel.selected_index())
+        zones = self.zone_panel.zones
+        self.video_widget.set_zones(zones, self.zone_panel.selected_index())
+        state = self.intrusion_monitor.set_zones(zones)
+        self.video_widget.set_monitor_state(state)
+
+    @Slot(int, object)
+    def on_detections(self, frame_index: int, detections: list[Detection]) -> None:
+        state = self.intrusion_monitor.update(
+            detections, frame_index, self.video_widget.fps
+        )
+        if self.intrusion_monitor.new_events and self.video_path is not None:
+            try:
+                save_event_records(self.intrusion_monitor.new_events, self.video_path)
+            except OSError as error:
+                QMessageBox.warning(
+                    self,
+                    "사건 저장 실패",
+                    f"침입 사건 클립/CSV를 저장할 수 없습니다.\n\n{error}",
+                )
+        self.video_widget.set_detections(frame_index, detections)
+        self.video_widget.set_monitor_state(state)
 
     def set_edit_mode(self, editing: bool) -> None:
         self.zone_panel.set_edit_mode(editing)
