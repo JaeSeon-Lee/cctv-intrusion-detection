@@ -1,64 +1,65 @@
 ZonePanel {
-    background-color: #f7f9fb;
-    border-left: 1px solid #cfd7e1;
+    background-color: #121920;
+    border-left: 1px solid #1e293b;
 }
 
 QPushButton#primaryAction {
-    background-color: #0f766e;
-    border-color: #0f766e;
+    background-color: #0d9488;
+    border-color: #0d9488;
     color: #ffffff;
 }
 
 QPushButton#primaryAction:hover {
-    background-color: #0d9488;
-    border-color: #0d9488;
+    background-color: #14b8a6;
+    border-color: #14b8a6;
     color: #ffffff;
 }
 
 QPushButton#primaryAction:pressed {
-    background-color: #115e59;
-    border-color: #115e59;
-    color: #ffffff;
-}
-
-QPushButton#primaryAction:disabled {
-    background-color: #99b8b4;
-    border-color: #99b8b4;
-    color: #e8f2f1;
-}
-
-QPushButton#apply {
     background-color: #0f766e;
     border-color: #0f766e;
     color: #ffffff;
 }
 
-QPushButton#apply:hover {
+QPushButton#primaryAction:disabled {
+    background-color: #1e3a38;
+    border-color: #1e3a38;
+    color: #64748b;
+}
+
+QPushButton#apply {
     background-color: #0d9488;
     border-color: #0d9488;
     color: #ffffff;
 }
 
+QPushButton#apply:hover {
+    background-color: #14b8a6;
+    border-color: #14b8a6;
+    color: #ffffff;
+}
+
 QPushButton#cancel {
-    background-color: #ffffff;
-    color: #475569;
+    background-color: #1a2330;
+    color: #cbd5e1;
+    border-color: #334155;
 }
 
 QLabel#editLabel {
     font-size: 12px;
     line-height: 1.4;
-    color: #b45309;
-    background-color: #fff7ed;
-    border: 1px solid #fdba74;
-    border-radius: 8px;
+    color: #fbbf24;
+    background-color: #292524;
+    border: 1px solid #78350f;
+    border-radius: 6px;
     padding: 10px 12px;
 }
 
 QLabel#title {
-    font-size: 12px;
+    font-size: 11px;
     font-weight: 700;
-    letter-spacing: 0.4px;
-    color: #475569;
+    letter-spacing: 0.8px;
+    color: #94a3b8;
     padding-top: 4px;
 }
 
@@ -72,15 +73,15 @@ QComboBox#levelCombo {
     font-size: 13px;
     font-weight: 600;
     padding: 6px 10px;
-    border: 1px solid #d5dde6;
-    border-radius: 8px;
-    background-color: #ffffff;
-    color: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    background-color: #1a2330;
+    color: #e2e8f0;
     min-height: 28px;
 }
 
 QComboBox#levelCombo:hover {
-    border-color: #94a3b8;
+    border-color: #475569;
 }
 
 QComboBox#levelCombo::drop-down {
@@ -89,9 +90,10 @@ QComboBox#levelCombo::drop-down {
 }
 
 QComboBox#levelCombo QAbstractItemView {
-    background-color: #ffffff;
-    border: 1px solid #d5dde6;
-    selection-background-color: #0f766e;
+    background-color: #1a2330;
+    border: 1px solid #334155;
+    color: #e2e8f0;
+    selection-background-color: #0d9488;
     selection-color: #ffffff;
     padding: 4px;
 }
@@ -99,33 +101,33 @@ QComboBox#levelCombo QAbstractItemView {
 QLineEdit#nameEdit {
     font-size: 13px;
     padding: 7px 10px;
-    border: 1px solid #d5dde6;
-    border-radius: 8px;
-    background-color: #ffffff;
-    color: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    background-color: #1a2330;
+    color: #e2e8f0;
     min-height: 28px;
 }
 
 QLineEdit#nameEdit:focus {
-    border-color: #0f766e;
+    border-color: #2dd4bf;
 }
 
 QLineEdit#nameEdit:disabled {
-    background-color: #eef2f6;
-    color: #94a3b8;
+    background-color: #151c26;
+    color: #64748b;
 }
 
 QComboBox#levelCombo:disabled {
-    background-color: #eef2f6;
-    color: #94a3b8;
+    background-color: #151c26;
+    color: #64748b;
 }
 
 QListWidget {
-    background-color: #ffffff;
+    background-color: #1a2330;
     font-size: 13px;
-    color: #1e293b;
-    border: 1px solid #d5dde6;
-    border-radius: 10px;
+    color: #e2e8f0;
+    border: 1px solid #334155;
+    border-radius: 8px;
     padding: 4px;
     outline: none;
 }
@@ -137,10 +139,10 @@ QListWidget::item {
 }
 
 QListWidget::item:hover {
-    background-color: #eef2f6;
+    background-color: #243041;
 }
 
 QListWidget::item:selected {
-    background-color: #fbbf24;
-    color: #1e293b;
+    background-color: #0f766e;
+    color: #ecfdf5;
 }

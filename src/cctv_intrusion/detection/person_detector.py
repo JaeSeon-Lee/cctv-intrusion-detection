@@ -1,4 +1,7 @@
 # YOLO로 프레임 한 장에서 사람을 찾는다. (UI와 무관한 순수 추론 코드, 스레드 처리는 person_detection.py)
+from __future__ import annotations
+
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -7,6 +10,8 @@ import torch
 from ultralytics import YOLO
 
 from cctv_intrusion.paths import MODELS_DIR
+
+logger = logging.getLogger(__name__)
 
 # ultralytics 공식 모델 이름. MODELS_DIR 에 없으면 최초 1회 자동으로 내려받는다 (약 19MB)
 MODEL_NAME = "yolo11s.pt"
@@ -22,7 +27,7 @@ DEFAULT_IMGSZ = 1280
 DEFAULT_IOU = 0.45
 # Test-Time Augmentation(좌우 반전 등 여러 번 추론 후 합침).
 # 담 넘는 프레임에서 conf가 0.19→0.65 수준으로 회복되는 경우가 많아 켠다.
-# 대가로 추론이 대략 2~3배 느려지지만, MPS면 실사용 가능한 수준이다.
+# 대가로 추론이 대략 2~3배 느려지지만, GPU(MPS/CUDA)면 실사용 가능한 수준이다.
 DEFAULT_AUGMENT = True
 
 
@@ -38,11 +43,22 @@ class Detection:
 
 
 def select_device() -> str:
-    """가능하면 GPU/Apple Silicon, 아니면 CPU."""
+    """우선순위: NVIDIA CUDA → Apple MPS → CPU."""
     if torch.cuda.is_available():
+        name = torch.cuda.get_device_name(0)
+        logger.info("CUDA GPU 사용: %s", name)
         return "cuda:0"
-    if getattr(torch.backends, "mps", None) is not None and torch.backends.mps.is_available():
+
+    mps = getattr(torch.backends, "mps", None)
+    if mps is not None and mps.is_built() and mps.is_available():
+        logger.info("Apple MPS(GPU) 사용")
         return "mps"
+
+    logger.warning(
+        "GPU를 쓸 수 없어 CPU로 추론합니다. "
+        "macOS는 기본 torch, Windows/Linux NVIDIA는 "
+        "`pip install -r requirements-cuda.txt` 를 확인하세요."
+    )
     return "cpu"
 
 
@@ -67,7 +83,10 @@ class PersonDetector:
         self.iou = iou
         self.augment = augment
         # 파일이 없으면 ultralytics가 model_path 위치로 내려받는다 (cwd에 받지 않도록 전체 경로로 넘김)
+        MODELS_DIR.mkdir(parents=True, exist_ok=True)
         self.model = YOLO(str(model_path))
+        # 가중치를 선택한 장치로 올려 둔다 (predict 의 device= 와 맞춘다)
+        self.model.to(self.device)
 
     def detect(self, frame: np.ndarray) -> list[Detection]:
         # frame: OpenCV BGR 프레임

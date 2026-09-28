@@ -6,9 +6,9 @@ import pytest
 
 from cctv_intrusion.detection import Detection, PersonDetection, PersonDetector
 from cctv_intrusion.detection.person_detector import MODEL_NAME
-from cctv_intrusion.paths import INPUT_DIR, MODELS_DIR
+from cctv_intrusion.paths import CCTV_DIR, MODELS_DIR
 
-SAMPLE_VIDEO = INPUT_DIR / "test_trespass.mp4"
+SAMPLE_VIDEO = CCTV_DIR / "test_trespass.mp4"
 FRAME = np.zeros((4, 4, 3), dtype=np.uint8)
 TIMEOUT_MS = 5000
 
@@ -52,7 +52,7 @@ def detection(qtbot, fake):
 def test_only_latest_frame_is_kept_while_busy(qtbot, detection, fake):
     # 1번 추론 중에 2, 3, 4번이 들어오면 4번만 남겨서 처리한다
     received = []
-    detection.detected.connect(lambda index, _: received.append(index))
+    detection.detected.connect(lambda _screen, index, _: received.append(index))
 
     for i in range(1, 5):
         detection.submit(frame_with(i), i)
@@ -66,7 +66,7 @@ def test_only_latest_frame_is_kept_while_busy(qtbot, detection, fake):
 
 def test_result_of_previous_video_is_dropped(qtbot, detection, fake):
     received = []
-    detection.detected.connect(lambda index, _: received.append(index))
+    detection.detected.connect(lambda _screen, index, _: received.append(index))
 
     detection.submit(frame_with(1), 1)
     detection.reset()  # 1번 추론 도중 새 영상을 연 상황

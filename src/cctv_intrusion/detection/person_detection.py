@@ -17,12 +17,12 @@ type DetectorFactory = Callable[[], PersonDetector]
 
 
 class DetectionWorker(QObject):
-    """워커 스레드 안에서 모델을 불러오고 추론만 하는 객체. PersonDetection 이 만들어서 쓴다."""
+    """워커 스레드 안에서 모델을 불러오고 추론만 하는 객체."""
 
-    loaded = Signal(str)  # 모델 로딩 완료: 사용하는 장치 ("cpu" / "cuda:0")
-    load_failed = Signal(str)  # 모델 로딩 실패: 오류 메시지
-    # 추론 완료: (세대 번호, 프레임 번호, list[Detection])
-    detected = Signal(int, int, object)
+    loaded = Signal(str)
+    load_failed = Signal(str)
+    # (세대, screen_id, frame_index, detections)
+    detected = Signal(int, int, int, object)
 
     def __init__(self, detector_factory: DetectorFactory) -> None:
         super().__init__()
@@ -31,7 +31,6 @@ class DetectionWorker(QObject):
 
     @Slot()
     def load(self) -> None:
-        # 모델 파일이 없으면 여기서 내려받기까지 하므로 오래 걸릴 수 있다
         try:
             self.detector = self.detector_factory()
         except (OSError, RuntimeError, ValueError) as error:
@@ -40,52 +39,41 @@ class DetectionWorker(QObject):
             return
         self.loaded.emit(self.detector.device)
 
-    @Slot(int, int, object)
-    def detect(self, generation: int, frame_index: int, frame: np.ndarray) -> None:
+    @Slot(int, int, int, object)
+    def detect(
+        self, generation: int, screen_id: int, frame_index: int, frame: np.ndarray
+    ) -> None:
         detections = []
         if self.detector is not None:
             try:
                 detections = self.detector.detect(frame)
             except RuntimeError:
-                # 한 프레임 추론이 실패해도 다음 프레임은 계속 처리하도록 빈 결과로 넘긴다
                 logger.exception("%d번 프레임 사람 탐지 실패", frame_index)
-        # 실패해도 반드시 detected 를 보낸다. PersonDetection 이 이걸 받아야 다음 프레임을 보낸다
-        self.detected.emit(generation, frame_index, detections)
+        self.detected.emit(generation, screen_id, frame_index, detections)
 
 
 class PersonDetection(QObject):
-    """UI 스레드 쪽 창구. 프레임을 넘기면 워커 스레드에서 사람을 찾아 결과를 Signal로 알려준다.
-
-    사용법:
-      detection = PersonDetection()
-      detection.start()                                  # 워커 스레드 시작 + 모델 로딩
-      video_widget.frame_ready.connect(detection.submit) # 프레임마다 탐지 요청
-      detection.detected.connect(...)                    # 결과 받기
-      detection.stop()                                   # 앱 종료 시
+    """UI 스레드 쪽 창구. screen_id 로 어느 CCTV 칸인지 구분한다.
 
     Signals:
-      ready(str)             : 모델 로딩 완료 (사용 장치 "cpu" / "cuda:0")
-      failed(str)            : 모델 로딩 실패 (오류 메시지). 이후 submit 은 무시된다
-      detected(int, list)    : (프레임 번호, list[Detection]) 좌표는 원본 프레임 픽셀
+      ready(str)
+      failed(str)
+      detected(int, int, list) : (screen_id, frame_index, detections)
     """
 
     ready = Signal(str)
     failed = Signal(str)
-    detected = Signal(int, object)  # object: list[Detection]
+    detected = Signal(int, int, object)
 
-    # 워커에게 추론 요청 (내부용): (세대 번호, 프레임 번호, BGR 프레임)
-    request = Signal(int, int, object)
+    request = Signal(int, int, int, object)  # generation, screen_id, frame_index, frame
 
     def __init__(self, detector_factory: DetectorFactory = PersonDetector) -> None:
         super().__init__()
-        self.available = True  # 모델 로딩에 실패하면 False
-        self.busy = False  # 워커가 추론(또는 모델 로딩) 중인지
-        self.pending = None  # 추론 중에 들어온 가장 최근 프레임 (frame, frame_index)
-        # 영상을 바꿀 때마다 1씩 올린다. 이전 영상 프레임의 결과가 늦게 도착하면 세대가 달라서 버린다
+        self.available = True
+        self.busy = False
+        self.pending = None  # (frame, frame_index, screen_id)
         self.generation = 0
 
-        # QThread: 이벤트 루프를 가진 별도 스레드. moveToThread 한 객체의 Slot은 그 스레드에서 실행된다.
-        # 다른 스레드 객체로의 Signal 연결은 자동으로 queued(이벤트 큐로 전달) 방식이 된다.
         self.thread = QThread()
         self.worker = DetectionWorker(detector_factory)
         self.worker.moveToThread(self.thread)
@@ -97,43 +85,36 @@ class PersonDetection(QObject):
         self.worker.detected.connect(self.on_worker_detected)
 
     def start(self) -> None:
-        # 모델 로딩이 끝날 때까지 들어오는 프레임은 pending 에 최신 것만 남겨뒀다가 로딩 후 바로 처리한다
         self.busy = True
         self.thread.start()
 
     def stop(self) -> None:
-        # 진행 중인 추론(또는 모델 내려받기)이 끝날 때까지 기다린 뒤 스레드를 종료한다
         self.thread.quit()
         self.thread.wait()
 
     def reset(self) -> None:
-        # 새 영상을 열 때 호출: 기다리던 프레임과 진행 중인 이전 영상의 결과를 버린다
         self.generation += 1
         self.pending = None
 
-    @Slot(object, int)
-    def submit(self, frame: np.ndarray, frame_index: int) -> None:
-        # 탐지 요청. VideoWidget.frame_ready 에 연결한다
+    def submit(self, frame: np.ndarray, frame_index: int, screen_id: int = 0) -> None:
         if not self.available:
             return
-        # frame 은 다른 모듈이 그 위에 그릴 수도 있으므로 복사본을 워커에게 넘긴다
         if self.busy:
-            self.pending = (frame.copy(), frame_index)
+            self.pending = (frame.copy(), frame_index, screen_id)
             return
-        self.send(frame.copy(), frame_index)
+        self.send(frame.copy(), frame_index, screen_id)
 
-    def send(self, frame: np.ndarray, frame_index: int) -> None:
+    def send(self, frame: np.ndarray, frame_index: int, screen_id: int) -> None:
         self.busy = True
-        self.request.emit(self.generation, frame_index, frame)
+        self.request.emit(self.generation, screen_id, frame_index, frame)
 
     def send_pending(self) -> None:
-        # 기다리던 프레임이 있으면 보내고, 없으면 쉬는 상태로
         if self.pending is None:
             self.busy = False
             return
-        frame, frame_index = self.pending
+        frame, frame_index, screen_id = self.pending
         self.pending = None
-        self.send(frame, frame_index)
+        self.send(frame, frame_index, screen_id)
 
     @Slot(str)
     def on_loaded(self, device: str) -> None:
@@ -148,10 +129,14 @@ class PersonDetection(QObject):
         self.pending = None
         self.failed.emit(message)
 
-    @Slot(int, int, object)
+    @Slot(int, int, int, object)
     def on_worker_detected(
-        self, generation: int, frame_index: int, detections: list[Detection]
+        self,
+        generation: int,
+        screen_id: int,
+        frame_index: int,
+        detections: list[Detection],
     ) -> None:
         self.send_pending()
         if generation == self.generation:
-            self.detected.emit(frame_index, detections)
+            self.detected.emit(screen_id, frame_index, detections)

@@ -7,46 +7,37 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from cctv_intrusion.paths import DATA_DIR, OUTPUT_DIR
+from cctv_intrusion.paths import CCTV_DIR
 from cctv_intrusion.ui.styles import load_qss
 
 
 class FileTree(QWidget):
+    """CCTV 영상 폴더(data/cctv) 파인더."""
+
     file_selected = Signal(str)
 
     def __init__(self):
         super().__init__()
 
-        # Qt 함수에는 문자열 경로를 넘긴다
-        data_path = str(DATA_DIR)
-        output_path = str(OUTPUT_DIR)
+        CCTV_DIR.mkdir(parents=True, exist_ok=True)
+        root = str(CCTV_DIR)
 
-        # 침입 클립이 저장될 output 폴더가 없으면 미리 만들어둔다 (git clone 직후에는 빈 폴더가 없음)
-        OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-
-        # QFileSystemModel은 폴더를 감시하다가 파일이 추가/삭제되면 트리를 자동으로 갱신해준다.
-        # 따라서 팀원 모듈이 output 폴더에 클립을 저장하면 별도 코드 없이 트리에 나타난다.
         self.model = QFileSystemModel()
-        self.model.setRootPath(data_path)
+        self.model.setRootPath(root)
         self.model.setNameFilters(["*.mp4", "*.avi", "*.mov", "*.mkv"])
         self.model.setNameFilterDisables(False)
 
         self.tree = QTreeView()
         self.tree.setModel(self.model)
-        self.tree.setRootIndex(self.model.index(data_path))
-
-        # 파일 이름 이외 컬럼 보이지 않게 설정.
-        self.tree.setColumnHidden(1, True)  # Size
-        self.tree.setColumnHidden(2, True)  # Type
-        self.tree.setColumnHidden(3, True)  # Date Modified
+        self.tree.setRootIndex(self.model.index(root))
+        self.tree.setColumnHidden(1, True)
+        self.tree.setColumnHidden(2, True)
+        self.tree.setColumnHidden(3, True)
         self.tree.setHeaderHidden(True)
-
-        # output 폴더는 처음부터 펼쳐서 새 클립이 바로 보이게 함
-        self.tree.expand(self.model.index(output_path))
 
         title = QLabel("영상 목록")
         title.setObjectName("panelTitle")
-        subtitle = QLabel("재생할 파일을 선택하세요")
+        subtitle = QLabel("화면을 고른 뒤 파일을 선택하세요")
         subtitle.setObjectName("panelSubtitle")
 
         self.setStyleSheet(load_qss("file_tree"))
@@ -57,13 +48,11 @@ class FileTree(QWidget):
         layout.addWidget(title)
         layout.addWidget(subtitle)
         layout.addWidget(self.tree, 1)
-
         self.setLayout(layout)
 
         self.tree.clicked.connect(self.on_clicked)
 
     def on_clicked(self, index):
         path = self.model.filePath(index)
-
         if path.lower().endswith((".mp4", ".avi", ".mov", ".mkv")):
             self.file_selected.emit(path)

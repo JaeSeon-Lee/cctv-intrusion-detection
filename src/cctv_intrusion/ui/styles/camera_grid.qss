@@ -1,0 +1,44 @@
+/* CCTV 4분할 셀 — 모니터 콘솔 */
+QFrame#cameraCell {
+    background-color: #0c1219;
+    border: 1px solid #243041;
+    border-radius: 6px;
+}
+
+QFrame#cameraCell[selected="true"] {
+    border: 2px solid #2dd4bf;
+}
+
+QFrame#cameraCell[focused="true"] {
+    border: 2px solid #38bdf8;
+}
+
+QWidget#cameraCellHeader {
+    background-color: #141c27;
+    border-bottom: 1px solid #243041;
+}
+
+QLabel#cameraCellTitle {
+    color: #cbd5e1;
+    background: transparent;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+    padding: 6px 10px;
+}
+
+QPushButton#expandButton {
+    color: #94a3b8;
+    background-color: transparent;
+    border: none;
+    border-left: 1px solid #243041;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 6px 12px;
+    min-width: 48px;
+}
+
+QPushButton#expandButton:hover {
+    color: #f8fafc;
+    background-color: #1e293b;
+}
