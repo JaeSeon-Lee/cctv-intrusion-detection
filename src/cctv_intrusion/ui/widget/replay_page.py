@@ -1,8 +1,7 @@
 """다시보기 탭 UI.
 
-상단: data/recordings 상시 녹화본
-하단: 선택한 녹화본과 같은 이름 폴더의 침입 클립
-예) cam1.mp4 선택 → recordings/cam1/*.mp4 목록
+상단: data/recordings 상시 녹화본 (CAM 화면 그대로)
+하단: data/output 침입 사건 클립
 """
 
 from __future__ import annotations
@@ -21,20 +20,16 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from cctv_intrusion.paths import RECORDINGS_DIR
+from cctv_intrusion.paths import OUTPUT_DIR, RECORDINGS_DIR
 from cctv_intrusion.ui.styles import load_qss
 from cctv_intrusion.ui.widget.video_widget import VideoWidget
 
-VIDEO_SUFFIXES = (".mp4", ".avi", ".mov", ".mkv")
+VIDEO_SUFFIXES = (".ts", ".mp4", ".avi", ".mov", ".mkv")
 
 
-def clips_dir_for(video_path: str | Path) -> Path:
-    """녹화본 foo.mp4 → 같은 위치의 foo/ 폴더."""
-    return Path(video_path).with_suffix("")
-
-
-def list_related_clips(video_path: str | Path) -> list[Path]:
-    folder = clips_dir_for(video_path)
+def list_intrusion_clips(*, output_dir: Path | None = None) -> list[Path]:
+    """침입 사건 클립 (OUTPUT_DIR). CSV 등은 제외."""
+    folder = output_dir or OUTPUT_DIR
     if not folder.is_dir():
         return []
     return sorted(
@@ -45,7 +40,7 @@ def list_related_clips(video_path: str | Path) -> list[Path]:
 
 
 class ReplayPage(QWidget):
-    """다시보기: 좌측(녹화 + 침입 클립) · 중앙 재생기 · 배속."""
+    """다시보기: 좌측(상시 녹화 + 침입 클립) · 중앙 재생기 · 배속."""
 
     file_selected = Signal(str)
 
@@ -53,8 +48,8 @@ class ReplayPage(QWidget):
         super().__init__()
 
         RECORDINGS_DIR.mkdir(parents=True, exist_ok=True)
+        OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
         root = str(RECORDINGS_DIR)
-        self.current_recording: Path | None = None
 
         self.model = QFileSystemModel()
         self.model.setRootPath(root)
@@ -70,14 +65,14 @@ class ReplayPage(QWidget):
         self.tree.setHeaderHidden(True)
         self.tree.clicked.connect(self._on_recording_clicked)
 
-        rec_title = QLabel("녹화 목록")
+        rec_title = QLabel("상시 녹화")
         rec_title.setObjectName("panelTitle")
-        rec_subtitle = QLabel("상시 녹화본 · 클릭하면 아래 침입 클립이 열립니다")
+        rec_subtitle = QLabel("data/recordings · CAM 화면(박스·구역·경보) · .ts 상시 녹화")
         rec_subtitle.setObjectName("panelSubtitle")
 
         self.clips_title = QLabel("침입 클립")
         self.clips_title.setObjectName("panelTitle")
-        self.clips_subtitle = QLabel("녹화본과 같은 이름 폴더")
+        self.clips_subtitle = QLabel("data/output · 경보 구간 사건 클립")
         self.clips_subtitle.setObjectName("panelSubtitle")
 
         self.clips_list = QListWidget()
@@ -116,12 +111,12 @@ class ReplayPage(QWidget):
         side_layout.addWidget(side_split)
 
         self.player = VideoWidget(compact=False)
-        self.player.label.setText("왼쪽에서 녹화본을 선택하세요")
+        self.player.label.setText("왼쪽에서 녹화본 또는 침입 클립을 선택하세요")
 
         hint = QLabel(
             "배속은 하단 컨트롤에서 바꿀 수 있습니다.\n"
-            "침입 클립은 녹화본과 같은 이름 폴더에 저장됩니다. "
-            "(예: cam1.mp4 → cam1/)"
+            "상시 녹화(recordings/*.ts)와 침입 클립(output/*.mp4)은 역할이 다릅니다.\n"
+            "MPEG-TS 는 저장 중에도 재생을 시도할 수 있습니다."
         )
         hint.setObjectName("hint")
         hint.setWordWrap(True)
@@ -148,27 +143,33 @@ class ReplayPage(QWidget):
         layout.addWidget(splitter)
 
         self.setStyleSheet(load_qss("replay_page"))
-        self._show_clips([])
+        self.refresh_intrusion_clips()
+
+    def showEvent(self, event) -> None:
+        super().showEvent(event)
+        self.refresh_intrusion_clips()
+
+    def refresh_intrusion_clips(self) -> None:
+        clips = list_intrusion_clips()
+        self.clips_list.clear()
+        for clip in clips:
+            item = QListWidgetItem(clip.name)
+            item.setData(Qt.ItemDataRole.UserRole, str(clip))
+            self.clips_list.addItem(item)
+        self.clips_subtitle.setText(
+            f"data/output · {len(clips)}개" if clips else "data/output · 침입 클립 없음"
+        )
 
     @Slot(object)
     def _on_recording_clicked(self, index) -> None:
         path = Path(self.model.filePath(index))
         if path.suffix.lower() not in VIDEO_SUFFIXES:
             return
-        # 침입 클립 폴더(이름만 같은 디렉터리)는 녹화본이 아님
         if path.is_dir():
             return
-        self.current_recording = path
         self.file_selected.emit(str(path))
         self.player.set_video(str(path))
-        clips = list_related_clips(path)
-        self._show_clips(clips)
-        folder = clips_dir_for(path)
-        self.clips_subtitle.setText(
-            f"{folder.name}/  ·  {len(clips)}개"
-            if clips
-            else f"{folder.name}/  ·  클립 없음 (침입 시 여기에 저장)"
-        )
+        self.refresh_intrusion_clips()
 
     @Slot(object)
     def _on_clip_clicked(self, item: QListWidgetItem) -> None:
@@ -176,10 +177,3 @@ class ReplayPage(QWidget):
         if path:
             self.file_selected.emit(str(path))
             self.player.set_video(str(path))
-
-    def _show_clips(self, clips: list[Path]) -> None:
-        self.clips_list.clear()
-        for clip in clips:
-            item = QListWidgetItem(clip.name)
-            item.setData(Qt.ItemDataRole.UserRole, str(clip))
-            self.clips_list.addItem(item)

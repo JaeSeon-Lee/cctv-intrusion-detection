@@ -6,7 +6,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DATA_DIR = PROJECT_ROOT / "data"
 CCTV_DIR = DATA_DIR / "cctv"  # CCTV 탭에서 재생할 영상
 SCREENS_DIR = CCTV_DIR / "screens"  # 화면(슬롯)별 위험구역 JSON
-RECORDINGS_DIR = DATA_DIR / "recordings"  # 상시 녹화본 (다시보기 탭)
+RECORDINGS_DIR = DATA_DIR / "recordings"  # 상시 녹화본 (.ts, 다시보기 탭)
 OUTPUT_DIR = DATA_DIR / "output"  # 침입 클립·CSV
 MODELS_DIR = PROJECT_ROOT / "models"  # YOLO 모델 (최초 실행 때 자동 다운로드, 커밋 안 함)
 

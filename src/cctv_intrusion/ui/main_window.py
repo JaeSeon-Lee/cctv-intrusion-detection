@@ -1,4 +1,3 @@
-
 from PySide6.QtCore import Qt, Signal, Slot
 from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
@@ -20,6 +19,7 @@ from cctv_intrusion.ui.widget.camera_grid import CameraGrid
 from cctv_intrusion.ui.widget.file_tree import FileTree
 from cctv_intrusion.ui.widget.replay_page import ReplayPage
 from cctv_intrusion.ui.widget.zone_panel import ZonePanel
+from cctv_intrusion.video import ContinuousRecorder, compose_overlay_frame
 from cctv_intrusion.zone import (
     MIN_POINTS,
     Zone,
@@ -56,6 +56,8 @@ class MainWindow(QMainWindow):
 
         self.monitors = {i: IntrusionMonitor() for i in range(1, SCREEN_COUNT + 1)}
         self.live_recorders: dict[int, LiveRecorder] = {}
+        # 상시 녹화: 탭 전환과 무관하게 frame_ready 에서 계속 기록
+        self.continuous_recorders: dict[int, ContinuousRecorder] = {}
 
         self.file_tree = FileTree()
         self.camera_grid = CameraGrid()
@@ -146,6 +148,7 @@ class MainWindow(QMainWindow):
     def on_source_opened(self, screen_index: int, source: str) -> None:
         del source
         self.finish_live_recording(screen_index)
+        self.stop_continuous_recording(screen_index)
         video = self.camera_grid.video(screen_index)
         monitor = self.monitors[screen_index]
 
@@ -164,6 +167,8 @@ class MainWindow(QMainWindow):
         if video.live:
             self.live_recorders[screen_index] = LiveRecorder()
 
+        self.start_continuous_recording(screen_index)
+
         if screen_index == self.camera_grid.selected_index:
             self.loading_zones = True
             try:
@@ -175,6 +180,7 @@ class MainWindow(QMainWindow):
     @Slot(int)
     def on_source_lost(self, screen_index: int) -> None:
         self.finish_live_recording(screen_index)
+        self.stop_continuous_recording(screen_index)
         self.camera_grid.video(screen_index).close_video()
         self.monitors[screen_index].reset()
         if screen_index == 1:
@@ -187,10 +193,25 @@ class MainWindow(QMainWindow):
     @Slot(int, object, int)
     def on_frame_ready(self, screen_index: int, frame, frame_index: int) -> None:
         self.person_detection.submit(frame, frame_index, screen_index)
+        video = self.camera_grid.video(screen_index)
+
+        continuous = self.continuous_recorders.get(screen_index)
+        if continuous is not None:
+            try:
+                overlaid = compose_overlay_frame(
+                    frame,
+                    video.zones,
+                    video.detections,
+                    video.monitor_state,
+                    selected_index=video.selected_zone,
+                )
+                continuous.write(overlaid)
+            except OSError as error:
+                self.on_continuous_record_failed(screen_index, error)
+
         recorder = self.live_recorders.get(screen_index)
         if recorder is None:
             return
-        video = self.camera_grid.video(screen_index)
         try:
             recorder.add_frame(frame, frame_index / video.fps)
         except OSError as error:
@@ -239,9 +260,7 @@ class MainWindow(QMainWindow):
     def update_zone_overlay(self) -> None:
         screen_index = self.camera_grid.selected_index
         zones = self.zone_panel.zones
-        self.camera_grid.video(screen_index).set_zones(
-            zones, self.zone_panel.selected_index()
-        )
+        self.camera_grid.video(screen_index).set_zones(zones, self.zone_panel.selected_index())
         state = self.monitors[screen_index].set_zones(zones)
         self.camera_grid.video(screen_index).set_monitor_state(state)
 
@@ -254,9 +273,11 @@ class MainWindow(QMainWindow):
                 "먼저 화면에 영상(또는 웹캠)이 재생 중이어야 합니다.",
             )
             return
-        # 실시간 CCTV: 구역 편집 중에도 재생을 멈추지 않는다
+        # 구역 편집 중에도 CCTV 재생은 계속한다 (일시정지하지 않음)
         self.set_edit_mode(True)
         video.start_drawing()
+        if not video.is_playing():
+            video.play()
         self.zone_edit_started.emit()
 
     def apply_zone_edit(self) -> None:
@@ -317,6 +338,51 @@ class MainWindow(QMainWindow):
         video.set_detections(frame_index, detections)
         video.set_monitor_state(state)
 
+    def start_continuous_recording(self, screen_index: int) -> None:
+        video = self.camera_grid.video(screen_index)
+        width, height = video.frame_size()
+        if width <= 0 or height <= 0:
+            return
+        try:
+            self.continuous_recorders[screen_index] = ContinuousRecorder(
+                screen_index,
+                width,
+                height,
+                video.fps,
+            )
+        except OSError as error:
+            QMessageBox.warning(
+                self,
+                "상시 녹화 실패",
+                f"CAM{screen_index} 상시 녹화를 시작하지 못했습니다.\n\n{error}",
+            )
+
+    def stop_continuous_recording(self, screen_index: int) -> None:
+        recorder = self.continuous_recorders.pop(screen_index, None)
+        if recorder is None:
+            return
+        try:
+            recorder.close()
+        except OSError as error:
+            QMessageBox.warning(
+                self,
+                "상시 녹화 종료 오류",
+                f"CAM{screen_index} 상시 녹화 파일을 닫는 중 오류가 났습니다.\n\n{error}",
+            )
+
+    def on_continuous_record_failed(self, screen_index: int, error: OSError) -> None:
+        recorder = self.continuous_recorders.pop(screen_index, None)
+        if recorder is not None:
+            try:
+                recorder.close()
+            except OSError:
+                pass
+        QMessageBox.warning(
+            self,
+            "상시 녹화 중단",
+            f"CAM{screen_index} 상시 녹화를 멈춥니다.\n\n{error}",
+        )
+
     def finish_live_recording(self, screen_index: int) -> None:
         recorder = self.live_recorders.pop(screen_index, None)
         if recorder is None:
@@ -349,6 +415,8 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event) -> None:
         for screen_index in list(self.live_recorders):
             self.finish_live_recording(screen_index)
+        for screen_index in list(self.continuous_recorders):
+            self.stop_continuous_recording(screen_index)
         self.camera_grid.close_all()
         self.person_detection.stop()
         super().closeEvent(event)

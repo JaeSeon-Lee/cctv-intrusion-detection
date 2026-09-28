@@ -162,7 +162,7 @@ class VideoWidget(QWidget):
         return True
 
     def close_video(self) -> None:
-        self.pause()
+        self.pause(force=True)
         if self.render is not None:
             self.render.release()
             self.render = None
@@ -209,13 +209,18 @@ class VideoWidget(QWidget):
     def on_speed_changed(self) -> None:
         self.set_playback_speed(self.controls.playback_speed())
 
-    def pause(self) -> None:
+    def pause(self, *, force: bool = False) -> None:
+        # 위험구역 꼭짓점을 찍는 동안에는 재생을 멈추지 않는다
+        if self.drawing and not force:
+            return
         if self.live and self.is_playing():
             self.live_elapsed_sec += time.monotonic() - self.live_resumed_at
         self.timer.stop()
         self.controls.set_playing(False)
 
     def toggle_play(self) -> None:
+        if self.drawing:
+            return
         if self.is_playing():
             self.pause()
         else:
@@ -229,7 +234,7 @@ class VideoWidget(QWidget):
             if not ret:
                 # 아직 새 프레임이 없으면 다음 타이머에서 다시 본다
                 if self.render.lost:
-                    self.pause()
+                    self.pause(force=True)
                     self.source_lost.emit()
                 return
             elapsed = self.live_elapsed_sec + time.monotonic() - self.live_resumed_at
@@ -237,6 +242,12 @@ class VideoWidget(QWidget):
             self.handle_frame(frame)
             return
         if not ret:
+            # 구역 편집 중이면 처음으로 돌려 계속 재생 (CCTV처럼)
+            if self.drawing:
+                self.render.seek_frame(0)
+                self.frame_index = -1
+                self.at_end = False
+                return
             self.at_end = True
             self.pause()
             return
@@ -244,10 +255,14 @@ class VideoWidget(QWidget):
         self.handle_frame(frame)
 
     def step_frame(self) -> None:
+        if self.drawing:
+            return
         self.pause()
         self.next_frame()
 
     def prev_frame(self) -> None:
+        if self.drawing:
+            return
         self.pause()
         if self.frame_index > 0:
             self.go_to_frame(self.frame_index - 1)
@@ -277,10 +292,14 @@ class VideoWidget(QWidget):
         self.handle_frame(frame)
 
     def on_slider_pressed(self) -> None:
+        if self.drawing:
+            return
         self.was_playing = self.is_playing()
         self.pause()
 
     def on_slider_released(self) -> None:
+        if self.drawing:
+            return
         if self.was_playing:
             self.play()
 
@@ -340,6 +359,9 @@ class VideoWidget(QWidget):
         self.dragging_point = -1
         self.label.setMouseTracking(True)
         self.label.setCursor(Qt.CursorShape.CrossCursor)
+        # 구역 편집 시작 시 재생 유지
+        if self.render is not None and not self.is_playing():
+            self.play()
         self.update_label()
 
     def finish_drawing(self) -> list[tuple[int, int]]:
@@ -451,6 +473,8 @@ class VideoWidget(QWidget):
             self.controls.set_time(0, 0)
 
     def on_space_key(self) -> None:
+        if self.drawing:
+            return
         if self.controls.play_button.isEnabled():
             self.toggle_play()
 
