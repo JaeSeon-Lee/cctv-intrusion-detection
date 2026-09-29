@@ -32,6 +32,10 @@ def format_video_timestamp(seconds: float) -> str:
     return f"{minutes:02d}:{secs:02d}.{ms:03d}"
 
 
+def _optional_timestamp(seconds: float | None) -> str:
+    return "" if seconds is None else format_video_timestamp(seconds)
+
+
 def is_screen_recording_dir(directory: Path) -> bool:
     """recordings/camN/ 형태인지."""
     if directory.parent != RECORDINGS_DIR:
@@ -56,6 +60,10 @@ class IntrusionEvent:
     clip_start_sec: float
     clip_end_sec: float
     clip_file: str = ""
+    # 상시 녹화(.ts) 파일 기준 위치 — 대시보드에서 전체 녹화 대비 침입을 계산할 때 쓴다
+    source_file: str = ""
+    source_alarm_sec: float | None = None
+    source_cleared_sec: float | None = None
 
     @classmethod
     def create(
@@ -94,6 +102,9 @@ class IntrusionEvent:
             "clip_file": self.clip_file,
             "zone_name": self.zone_name,
             "zone_level": self.zone_level,
+            "source_file": self.source_file,
+            "source_alarm_at": _optional_timestamp(self.source_alarm_sec),
+            "source_cleared_at": _optional_timestamp(self.source_cleared_sec),
         }
 
 
@@ -110,6 +121,22 @@ def events_csv_path(
     return directory / f"{stem}{EVENTS_CSV_SUFFIX}"
 
 
+def _upgrade_csv_header(path: Path) -> None:
+    """예전 컬럼으로 만든 CSV 면 현재 컬럼으로 다시 쓴다 (없는 칸은 빈 값)."""
+    if not path.exists() or path.stat().st_size == 0:
+        return
+    with path.open(newline="", encoding="utf-8") as file:
+        reader = csv.DictReader(file)
+        if tuple(reader.fieldnames or ()) == EVENT_CSV_FIELDS:
+            return
+        rows = list(reader)
+    with path.open("w", newline="", encoding="utf-8") as file:
+        writer = csv.DictWriter(file, fieldnames=list(EVENT_CSV_FIELDS), extrasaction="ignore")
+        writer.writeheader()
+        for row in rows:
+            writer.writerow({field: row.get(field) or "" for field in EVENT_CSV_FIELDS})
+
+
 def append_events(
     events: list[IntrusionEvent],
     video_path: str | Path,
@@ -122,6 +149,7 @@ def append_events(
 
     path = events_csv_path(video_path, output_dir=output_dir)
     path.parent.mkdir(parents=True, exist_ok=True)
+    _upgrade_csv_header(path)
     write_header = not path.exists() or path.stat().st_size == 0
 
     with path.open("a", newline="", encoding="utf-8") as file:

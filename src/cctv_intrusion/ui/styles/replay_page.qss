@@ -35,3 +35,35 @@ QListWidget#clipsList::item:selected {
     background-color: #134e4a;
     color: #ccfbf1;
 }
+
+/* 여백은 dashboardBar 레이아웃(상하좌우 12px)이 맡는다 */
+QWidget#dashboardBar {
+    background-color: #121920;
+    border-top: 1px solid #1e293b;
+}
+
+QPushButton#dashboardButton {
+    font-size: 13px;
+    font-weight: 600;
+    margin: 0;
+    padding: 8px 14px;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    background-color: #1a2330;
+    color: #e2e8f0;
+}
+
+QPushButton#dashboardButton:hover {
+    background-color: #243041;
+    border-color: #475569;
+}
+
+QPushButton#dashboardButton:pressed {
+    background-color: #0f172a;
+}
+
+QPushButton#dashboardButton:disabled {
+    background-color: #151c26;
+    color: #64748b;
+    border-color: #1e293b;
+}

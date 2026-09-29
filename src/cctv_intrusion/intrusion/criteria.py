@@ -39,6 +39,9 @@ EVENT_CSV_FIELDS = (
     "clip_file",  # OUTPUT_DIR 클립 파일명 (stem_N.mp4)
     "zone_name",
     "zone_level",
+    "source_file",  # 클립을 자른 상시 녹화 파일명 (camN/{YYYYmmdd_HHMMSS}.ts)
+    "source_alarm_at",  # 상시 녹화 파일 기준 경보 시각
+    "source_cleared_at",  # 상시 녹화 파일 기준 해제 시각
 )
 
 
