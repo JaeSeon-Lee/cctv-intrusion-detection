@@ -11,6 +11,7 @@
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 import sys
@@ -27,7 +28,9 @@ def snapshot_for_playback(source: Path) -> Path:
         raise OSError(f"녹화 파일이 없습니다: {source}")
 
     suffix = source.suffix or ".ts"
-    dest = Path(tempfile.mkstemp(prefix=_TEMP_PREFIX, suffix=suffix)[1])
+    fd, name = tempfile.mkstemp(prefix=_TEMP_PREFIX, suffix=suffix)
+    os.close(fd)  # Windows 는 열린 파일을 지울 수 없다 (WinError 32)
+    dest = Path(name)
     dest.unlink(missing_ok=True)
 
     if sys.platform == "darwin":
