@@ -16,6 +16,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
+import cv2
+
 from cctv_intrusion.intrusion.criteria import EVENT_CLIP_AFTER_SEC, EVENT_CLIP_BEFORE_SEC
 from cctv_intrusion.intrusion.events import IntrusionEvent, append_events
 from cctv_intrusion.paths import RECORDINGS_DIR
@@ -52,6 +54,15 @@ def live_clip_path(
         if index > 10_000:
             raise OSError(f"클립 파일명을 만들 수 없습니다: {directory}")
     return path
+
+
+def _has_frame(path: Path) -> bool:
+    capture = cv2.VideoCapture(str(path))
+    try:
+        ok, frame = capture.read()
+        return bool(ok) and frame is not None
+    finally:
+        capture.release()
 
 
 def cut_clip_from_recording(
@@ -124,6 +135,13 @@ def cut_clip_from_recording(
         output.unlink(missing_ok=True)
         logger.error("ffmpeg 클립 실패 %.1fs: %s", elapsed, message)
         raise OSError(f"침입 클립 생성 실패: {source} → {output}\n{message}".strip())
+    # 요청 구간이 녹화 끝을 넘으면 ffmpeg 은 성공(0)으로 끝나도 프레임 없는 mp4 를 남긴다
+    if not _has_frame(output):
+        output.unlink(missing_ok=True)
+        raise OSError(
+            f"침입 클립에 프레임이 없습니다: {source.name} 의 {start_sec:.2f}s~ 구간이 "
+            "녹화 파일 범위를 벗어났습니다."
+        )
     logger.info(
         "ffmpeg 클립 완료 %.1fs out=%s bytes=%d",
         elapsed,

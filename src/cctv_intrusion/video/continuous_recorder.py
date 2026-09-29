@@ -7,6 +7,11 @@ MPEG-TS 는 스트림형이라 쓰기 중에도 파일을 읽을 수 있다.
 파일: RECORDINGS_DIR / 'cam{N}' / '{YYYYmmdd_HHMMSS}.ts'
 침입 사건 클립은 이 `.ts` 에서 구간을 잘라 `live_*.mp4` 로 만든다.
 오버레이(박스·구역·경보)는 호출 측에서 프레임에 그린 뒤 write 한다.
+
+영상 시각(video_time_sec)을 넘기면 .ts 시간축을 그 시각에 맞춘다.
+웹캠은 선언 fps(예: 30)보다 실제로 프레임이 덜 들어오는데, 받은 프레임을 1장씩만 쓰면
+.ts 가 실제보다 짧아져(빨리 감기) 침입 구간 위치가 어긋난다.
+그래서 모자란 만큼 같은 프레임을 반복해 쓰고, 넘치면 건너뛴다 (고정 fps 채우기).
 """
 
 from __future__ import annotations
@@ -29,6 +34,8 @@ DEFAULT_FPS = 30.0
 MAX_FPS = 60.0
 # stdin write 가 이보다 길면 파이프 적체로 보고 경고
 _SLOW_WRITE_SEC = 0.05
+# 한 번에 반복해 채우는 최대 길이(초). 긴 멈춤을 한꺼번에 채우다 UI 가 멈추지 않도록 제한
+MAX_FILL_SEC = 2.0
 
 logger = logging.getLogger(__name__)
 
@@ -155,6 +162,9 @@ class ContinuousRecorder:
 
         if self.origin_video_sec is None and video_time_sec is not None:
             self.origin_video_sec = float(video_time_sec)
+        repeats = self._frames_to_write(video_time_sec)
+        if repeats <= 0:
+            return
 
         height, width = frame.shape[:2]
         if width != self.width or height != self.height:
@@ -164,10 +174,13 @@ class ContinuousRecorder:
 
         try:
             t0 = time.perf_counter()
-            self._proc.stdin.write(frame.tobytes())
-            # 디스크에 빨리 보이도록 파이프를 자주 비운다 (스냅샷·구간 자르기)
-            if self.written % 5 == 0:
-                self.flush()
+            data = frame.tobytes()
+            for _ in range(repeats):
+                self._proc.stdin.write(data)
+                self.written += 1
+                # 디스크에 빨리 보이도록 파이프를 자주 비운다 (스냅샷·구간 자르기)
+                if self.written % 5 == 0:
+                    self.flush()
             elapsed = time.perf_counter() - t0
             if elapsed >= _SLOW_WRITE_SEC:
                 logger.warning(
@@ -181,7 +194,28 @@ class ContinuousRecorder:
             err = self._read_stderr()
             self.close()
             raise OSError(f"상시 녹화 쓰기에 실패했습니다: {self.path}\n{err}".strip()) from error
-        self.written += 1
+
+    def _frames_to_write(self, video_time_sec: float | None) -> int:
+        """이 프레임을 몇 번 써야 .ts 시각이 영상 시각을 따라가는지.
+
+        0 이면 소스가 녹화 fps 보다 빨라 이번 프레임은 건너뛴다.
+        """
+        if video_time_sec is None or self.origin_video_sec is None:
+            return 1
+        elapsed = max(0.0, float(video_time_sec) - self.origin_video_sec)
+        # 이 프레임까지 포함해 .ts 에 있어야 할 프레임 수
+        target = int(round(elapsed * self.fps)) + 1
+        repeats = target - self.written
+        limit = max(1, int(MAX_FILL_SEC * self.fps))
+        if repeats > limit:
+            logger.warning(
+                "CAM%d 상시녹화 %.1fs 공백 — 이번에 %.1fs 만 채우고 다음 프레임에서 이어 채움",
+                self.screen_index,
+                repeats / self.fps,
+                MAX_FILL_SEC,
+            )
+            repeats = limit
+        return repeats
 
     def flush(self) -> None:
         """stdin 버퍼를 비워 디스크에 반영한다 (클립 자르기·다시보기 직전)."""

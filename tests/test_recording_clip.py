@@ -14,6 +14,7 @@ import pytest
 from cctv_intrusion.intrusion.events import IntrusionEvent
 from cctv_intrusion.intrusion.recording_clip import (
     IntrusionClipper,
+    cut_clip_from_recording,
     find_ffmpeg,
     live_clip_path,
     run_clip_export,
@@ -187,3 +188,21 @@ def test_no_clip_without_alarm(tmp_path: Path):
     assert not clipper.pending
     assert clipper.finish() is None
     assert list(tmp_path.iterdir()) == []
+
+
+@pytest.mark.skipif(find_ffmpeg() is None, reason="ffmpeg 필요")
+def test_cut_past_recording_end_raises_and_leaves_no_file(tmp_path: Path):
+    """녹화 길이를 넘는 구간을 자르면 빈 mp4 를 남기지 않고 오류를 낸다."""
+    continuous = ContinuousRecorder(
+        1, 64, 48, FPS, recordings_dir=tmp_path, clock=lambda: STARTED_AT
+    )
+    frame = np.zeros((48, 64, 3), dtype=np.uint8)
+    for index in range(30):  # 3초
+        continuous.write(frame, video_time_sec=index / FPS)
+    source = continuous.close()
+    assert source is not None
+
+    output = tmp_path / "live_out.mp4"
+    with pytest.raises(OSError, match="프레임이 없습니다"):
+        cut_clip_from_recording(source, start_sec=20.0, duration_sec=5.0, output=output)
+    assert not output.exists()
