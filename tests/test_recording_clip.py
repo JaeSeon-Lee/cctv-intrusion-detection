@@ -98,6 +98,40 @@ def test_clipper_cuts_from_continuous_recording(tmp_path: Path):
     assert rows[0]["cleared_at"] == "00:06.000"
     assert rows[0]["clip_file"] == "live_20260927_180911.mp4"
     assert rows[0]["zone_level"] == "danger"
+    # 상시 녹화 파일 기준 위치 (대시보드용)
+    assert rows[0]["source_file"] == continuous.path.name
+    assert rows[0]["source_alarm_at"] == "00:05.000"
+    assert rows[0]["source_cleared_at"] == "00:08.000"
+
+    continuous.close()
+
+
+@pytest.mark.skipif(find_ffmpeg() is None, reason="ffmpeg 필요")
+def test_source_position_subtracts_recording_origin(tmp_path: Path):
+    """녹화가 영상 20초부터 시작했으면 .ts 기준 위치는 20초를 뺀 값이다."""
+    continuous = ContinuousRecorder(
+        1, 64, 48, FPS, recordings_dir=tmp_path, clock=lambda: STARTED_AT
+    )
+    frame = np.zeros((48, 64, 3), dtype=np.uint8)
+    for index in range(150):
+        continuous.write(frame, video_time_sec=20.0 + index / FPS)
+
+    clipper = IntrusionClipper(
+        output_dir=tmp_path, get_recording=lambda: continuous, clock=lambda: STARTED_AT
+    )
+    clipper.update(True, 25.0, [])
+    clipper.update(False, 28.0, [_event(25.0, 28.0)])
+    job = clipper.tick(33.0)
+    assert job is not None
+    csv_path = run_clip_export(job)
+    clipper.mark_export_done()
+    assert csv_path is not None
+
+    with csv_path.open(encoding="utf-8") as file:
+        rows = list(csv.DictReader(file))
+    assert rows[0]["alarm_at"] == "00:03.000"
+    assert rows[0]["source_alarm_at"] == "00:05.000"
+    assert rows[0]["source_cleared_at"] == "00:08.000"
 
     continuous.close()
 

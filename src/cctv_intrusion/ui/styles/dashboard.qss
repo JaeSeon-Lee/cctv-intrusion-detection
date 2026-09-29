@@ -1,0 +1,76 @@
+/* 침입 대시보드 창 */
+QDialog#dashboard {
+    background-color: #0b1017;
+}
+
+QLabel#dashTitle {
+    font-size: 20px;
+    font-weight: 700;
+    color: #f1f5f9;
+}
+
+QLabel#dashSubtitle {
+    font-size: 12px;
+    color: #94a3b8;
+    padding-bottom: 4px;
+}
+
+QFrame#statTile,
+QFrame#section {
+    background-color: #121920;
+    border: 1px solid #1e293b;
+    border-radius: 8px;
+}
+
+QFrame#statTile QLabel,
+QFrame#section QLabel {
+    background: transparent;
+    border: none;
+}
+
+QLabel#statCaption {
+    font-size: 12px;
+    color: #94a3b8;
+}
+
+QLabel#statValue {
+    font-size: 26px;
+    font-weight: 700;
+    color: #f1f5f9;
+}
+
+QLabel#statDetail {
+    font-size: 11px;
+    color: #64748b;
+}
+
+QLabel#sectionTitle {
+    font-size: 13px;
+    font-weight: 600;
+    color: #e2e8f0;
+}
+
+QLabel#sectionSubtitle {
+    font-size: 11px;
+    color: #64748b;
+}
+
+QTableWidget#eventsTable {
+    background-color: #121920;
+    alternate-background-color: #151e28;
+    color: #e2e8f0;
+    border: none;
+    gridline-color: #1e293b;
+    font-size: 12px;
+    selection-background-color: #134e4a;
+    selection-color: #ccfbf1;
+}
+
+QTableWidget#eventsTable QHeaderView::section {
+    background-color: #0f172a;
+    color: #94a3b8;
+    border: none;
+    border-bottom: 1px solid #1e293b;
+    padding: 6px 8px;
+    font-weight: 600;
+}

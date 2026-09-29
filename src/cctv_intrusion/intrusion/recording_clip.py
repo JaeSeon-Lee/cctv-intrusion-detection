@@ -211,6 +211,9 @@ def run_clip_export(job: ClipExportJob) -> Path | None:
             zone_level=event.zone_level,
         )
         row.clip_file = clip_path.name
+        row.source_file = job.source.name
+        row.source_alarm_sec = max(0.0, event.alarm_sec - job.origin_video_sec)
+        row.source_cleared_sec = max(0.0, event.cleared_sec - job.origin_video_sec)
         rows.append(row)
     csv_path = append_events(rows, clip_path, output_dir=clip_path.parent)
     logger.info(

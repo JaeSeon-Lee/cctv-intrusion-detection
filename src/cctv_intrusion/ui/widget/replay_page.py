@@ -15,16 +15,19 @@ from PySide6.QtWidgets import (
     QListWidget,
     QListWidgetItem,
     QMessageBox,
+    QPushButton,
     QSplitter,
     QTreeView,
     QVBoxLayout,
     QWidget,
 )
 
+from cctv_intrusion.intrusion.recording_stats import recording_stats
 from cctv_intrusion.paths import RECORDINGS_DIR
 from cctv_intrusion.ui.styles import load_qss
+from cctv_intrusion.ui.widget.dashboard_dialog import DashboardDialog
 from cctv_intrusion.ui.widget.video_widget import VideoWidget
-from cctv_intrusion.video.playback_snapshot import snapshot_for_playback
+from cctv_intrusion.video.playback_snapshot import cleanup_snapshot, snapshot_for_playback
 
 CONTINUOUS_SUFFIXES = (".ts",)
 INTRUSION_SUFFIXES = (".mp4",)
@@ -75,6 +78,14 @@ class ReplayPage(QWidget):
         self.tree.setColumnHidden(3, True)
         self.tree.setHeaderHidden(True)
         self.tree.clicked.connect(self._on_recording_clicked)
+        self.tree.selectionModel().selectionChanged.connect(self._update_dashboard_button)
+
+        # 상시 녹화(.ts)를 선택했을 때만 활성화
+        self.dashboard_button = QPushButton("대시보드")
+        self.dashboard_button.setObjectName("dashboardButton")
+        self.dashboard_button.setToolTip("선택한 상시 녹화의 침입 비율·횟수·지속 시간 보기")
+        self.dashboard_button.setEnabled(False)
+        self.dashboard_button.clicked.connect(self.open_dashboard)
 
         rec_title = QLabel("상시 녹화")
         rec_title.setObjectName("panelTitle")
@@ -83,8 +94,6 @@ class ReplayPage(QWidget):
 
         self.clips_title = QLabel("침입 클립")
         self.clips_title.setObjectName("panelTitle")
-        self.clips_subtitle = QLabel("recordings/camN/ · .mp4 · events.csv")
-        self.clips_subtitle.setObjectName("panelSubtitle")
 
         self.clips_list = QListWidget()
         self.clips_list.setObjectName("clipsList")
@@ -98,12 +107,19 @@ class ReplayPage(QWidget):
         top_layout.addWidget(rec_subtitle)
         top_layout.addWidget(self.tree, 1)
 
+        # 버튼 상하좌우 여백을 같게 두려고 QSS margin 대신 레이아웃 여백을 쓴다
+        dashboard_bar = QWidget()
+        dashboard_bar.setObjectName("dashboardBar")
+        dashboard_layout = QVBoxLayout(dashboard_bar)
+        dashboard_layout.setContentsMargins(12, 12, 12, 12)
+        dashboard_layout.addWidget(self.dashboard_button)
+        top_layout.addWidget(dashboard_bar)
+
         bottom = QWidget()
         bottom_layout = QVBoxLayout(bottom)
         bottom_layout.setContentsMargins(0, 0, 0, 0)
         bottom_layout.setSpacing(0)
         bottom_layout.addWidget(self.clips_title)
-        bottom_layout.addWidget(self.clips_subtitle)
         bottom_layout.addWidget(self.clips_list, 1)
 
         side_split = QSplitter(Qt.Orientation.Vertical)
@@ -151,7 +167,8 @@ class ReplayPage(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(splitter)
 
-        self.setStyleSheet(load_qss("replay_page"))
+        # 좌측 패널 제목·트리는 CCTV 탭 영상 목록과 같은 스타일을 쓴다
+        self.setStyleSheet(load_qss("file_tree") + "\n" + load_qss("replay_page"))
         self.refresh_intrusion_clips()
 
     def set_live_sources(self, provider: Callable[[], set[str]]) -> None:
@@ -170,11 +187,42 @@ class ReplayPage(QWidget):
             item = QListWidgetItem(label)
             item.setData(Qt.ItemDataRole.UserRole, str(clip))
             self.clips_list.addItem(item)
-        self.clips_subtitle.setText(
-            f"recordings/camN/ · {len(clips)}개"
-            if clips
-            else "recordings/camN/ · 침입 클립 없음"
-        )
+
+    def selected_recording(self) -> Path | None:
+        """트리에서 고른 상시 녹화 .ts (폴더·선택 없음이면 None)."""
+        indexes = self.tree.selectionModel().selectedIndexes()
+        if not indexes:
+            return None
+        path = Path(self.model.filePath(indexes[0]))
+        if path.suffix.lower() not in CONTINUOUS_SUFFIXES or not path.is_file():
+            return None
+        return path
+
+    @Slot()
+    def _update_dashboard_button(self) -> None:
+        self.dashboard_button.setEnabled(self.selected_recording() is not None)
+
+    @Slot()
+    def open_dashboard(self) -> DashboardDialog | None:
+        recording = self.selected_recording()
+        if recording is None:
+            return None
+        live = str(recording.resolve()) in self._live_paths()
+        # 녹화 중인 .ts 는 연 순간 길이만 보이므로 스냅샷으로 길이를 잰다
+        snapshot = None
+        if live:
+            try:
+                snapshot = snapshot_for_playback(recording)
+            except OSError:
+                snapshot = None
+        try:
+            stats = recording_stats(recording, video_path=snapshot)
+        finally:
+            if snapshot is not None:
+                cleanup_snapshot(snapshot)
+        dialog = DashboardDialog(recording, self, stats=stats, live=live)
+        dialog.show()
+        return dialog
 
     def _live_paths(self) -> set[str]:
         if self._live_sources is None:
@@ -213,4 +261,6 @@ class ReplayPage(QWidget):
     def _on_clip_clicked(self, item: QListWidgetItem) -> None:
         path = item.data(Qt.ItemDataRole.UserRole)
         if path:
+            # 침입 클립을 재생하면 상시 녹화 선택(대시보드)은 풀린다
+            self.tree.clearSelection()
             self._play_path(Path(path))
