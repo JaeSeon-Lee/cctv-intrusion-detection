@@ -21,14 +21,12 @@ PERSON_CLASS = 0  # COCO: person
 # test_trespass 약 24~25초: 서 있을 때 conf≈0.9 → 담 위에서는 최고점이 ≈0.19까지 떨어짐.
 # 기존 0.30으로는 그 구간이 전부 탈락해서, 임계값을 그 아래로 내린다.
 DEFAULT_CONFIDENCE = 0.15
-# 입력 해상도. 클수록 부분만 보이는 몸도 특징이 살아남기 쉽다.
-DEFAULT_IMGSZ = 1280
+# 입력 해상도. 1280+augment 는 정확도↑·속도↓ — 4캠 실시간은 640 권장
+DEFAULT_IMGSZ = 640
 # NMS IoU. 담에 잘린 후보 박스가 서로 겹쳐도 너무 일찍 지우지 않게 한다.
 DEFAULT_IOU = 0.45
-# Test-Time Augmentation(좌우 반전 등 여러 번 추론 후 합침).
-# 담 넘는 프레임에서 conf가 0.19→0.65 수준으로 회복되는 경우가 많아 켠다.
-# 대가로 추론이 대략 2~3배 느려지지만, GPU(MPS/CUDA)면 실사용 가능한 수준이다.
-DEFAULT_AUGMENT = True
+# TTA(좌우 반전 등). 켜면 느리지만 가려진 자세에 유리. 4캠 관제 기본은 끔.
+DEFAULT_AUGMENT = False
 
 
 @dataclass(slots=True, frozen=True)

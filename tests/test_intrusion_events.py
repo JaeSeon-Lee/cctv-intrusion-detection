@@ -14,7 +14,7 @@ from cctv_intrusion.intrusion import (
     next_clip_path,
     save_event_records,
 )
-from cctv_intrusion.intrusion.events import format_video_timestamp
+from cctv_intrusion.intrusion.events import CAM_EVENTS_CSV_NAME, format_video_timestamp
 from cctv_intrusion.zone import Zone
 
 
@@ -40,6 +40,35 @@ def test_format_video_timestamp():
 
 def test_events_csv_path_uses_video_stem(tmp_path):
     assert events_csv_path(tmp_path / "cam1.mp4", output_dir=tmp_path) == tmp_path / "cam1.csv"
+
+
+def test_events_csv_path_uses_events_in_cam_folder(tmp_path, monkeypatch):
+    monkeypatch.setattr("cctv_intrusion.intrusion.events.RECORDINGS_DIR", tmp_path)
+    cam_dir = tmp_path / "cam3"
+    cam_dir.mkdir()
+    assert (
+        events_csv_path(tmp_path / "test.mp4", output_dir=cam_dir)
+        == cam_dir / CAM_EVENTS_CSV_NAME
+    )
+
+
+def test_save_event_records_writes_cam_events_csv(tmp_path, monkeypatch):
+    monkeypatch.setattr("cctv_intrusion.intrusion.events.RECORDINGS_DIR", tmp_path)
+    cam_dir = tmp_path / "cam2"
+    cam_dir.mkdir()
+    video = tmp_path / "cctv" / "test_2.mp4"
+    video.parent.mkdir()
+    _write_dummy_video(video, frames=40, fps=10.0)
+
+    event = IntrusionEvent.create(
+        alarm_sec=2.0,
+        cleared_sec=3.0,
+        zone_name="구역1",
+        zone_level="danger",
+    )
+    csv_path = save_event_records([event], video, output_dir=cam_dir)
+    assert csv_path == cam_dir / CAM_EVENTS_CSV_NAME
+    assert (cam_dir / "test_2_1.mp4").exists()
 
 
 def test_next_clip_path_increments(tmp_path):
@@ -142,3 +171,32 @@ def test_monitor_close_alarms_returns_active_alarm_as_event():
     assert events[0].cleared_at == "00:02.000"
     assert monitor.state == MonitorState.CLEARED
     assert monitor.close_alarms() == []
+
+
+def test_append_events_upgrades_old_header(tmp_path):
+    """예전 8컬럼 CSV 에 이어 쓰면 헤더를 현재 컬럼으로 바꾸고 이전 행은 빈 칸으로 채운다."""
+    from cctv_intrusion.intrusion.events import append_events
+
+    path = tmp_path / "cam1.csv"
+    path.write_text(
+        "alarm_at,cleared_at,duration_sec,clip_start,clip_end,clip_file,zone_name,zone_level\n"
+        "00:03.000,00:05.000,2.0,00:00.000,00:10.000,old.mp4,구역 1,danger\n",
+        encoding="utf-8",
+    )
+    event = IntrusionEvent.create(
+        alarm_sec=1.0, cleared_sec=2.0, zone_name="구역 2", zone_level="detect"
+    )
+    event.source_file = "20260929_120000.ts"
+    event.source_alarm_sec = 61.0
+    event.source_cleared_sec = 62.5
+    append_events([event], tmp_path / "cam1.mp4", output_dir=tmp_path)
+
+    with path.open(encoding="utf-8") as file:
+        reader = csv.DictReader(file)
+        rows = list(reader)
+    assert tuple(reader.fieldnames) == EVENT_CSV_FIELDS
+    assert rows[0]["clip_file"] == "old.mp4"
+    assert rows[0]["source_file"] == ""
+    assert rows[1]["source_file"] == "20260929_120000.ts"
+    assert rows[1]["source_alarm_at"] == "01:01.000"
+    assert rows[1]["source_cleared_at"] == "01:02.500"

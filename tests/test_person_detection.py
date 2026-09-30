@@ -50,17 +50,34 @@ def detection(qtbot, fake):
 
 
 def test_only_latest_frame_is_kept_while_busy(qtbot, detection, fake):
-    # 1번 추론 중에 2, 3, 4번이 들어오면 4번만 남겨서 처리한다
+    # 같은 캠: 1번 추론 중에 2, 3, 4번이 들어오면 4번만 남겨서 처리한다
     received = []
     detection.detected.connect(lambda _screen, index, _: received.append(index))
 
     for i in range(1, 5):
-        detection.submit(frame_with(i), i)
+        detection.submit(frame_with(i), i, screen_id=1)
     fake.gate.set()
     qtbot.waitUntil(lambda: len(received) == 2, timeout=TIMEOUT_MS)
 
     assert received == [1, 4]
     assert fake.seen == [1, 4]
+    assert not detection.busy
+
+
+def test_per_screen_latest_round_robin(qtbot, detection, fake):
+    # 캠별로 최신 1장씩 남기고, 들어온 캠 순서대로 처리한다
+    received: list[tuple[int, int]] = []
+    detection.detected.connect(lambda screen, index, _: received.append((screen, index)))
+
+    detection.submit(frame_with(1), 1, screen_id=1)  # 추론 시작
+    detection.submit(frame_with(10), 10, screen_id=2)
+    detection.submit(frame_with(20), 20, screen_id=3)
+    detection.submit(frame_with(11), 11, screen_id=2)  # 캠2는 최신(11)만
+    fake.gate.set()
+    qtbot.waitUntil(lambda: len(received) == 3, timeout=TIMEOUT_MS)
+
+    assert received == [(1, 1), (2, 11), (3, 20)]
+    assert fake.seen == [1, 11, 20]
     assert not detection.busy
 
 

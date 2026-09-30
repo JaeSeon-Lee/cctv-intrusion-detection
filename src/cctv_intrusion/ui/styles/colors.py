@@ -33,3 +33,12 @@ MONITOR_STATE_TEXT = QColor(255, 255, 255)
 def zone_color(level_id: str | int | None) -> QColor:
     level = get_level(level_id)
     return QColor(_ZONE_LEVEL_COLORS.get(level.id, _ZONE_LEVEL_COLORS["danger"]))
+
+
+# 대시보드 차트 (어두운 배경 기준)
+CHART_INTRUSION = QColor(239, 68, 68)  # 침입 구간·막대
+CHART_INTRUSION_HOVER = QColor(252, 165, 165)
+CHART_TRACK = QColor(30, 41, 59)  # 타임라인 바탕 (침입 없는 구간)
+CHART_GRID = QColor(30, 41, 59)
+CHART_AXIS_TEXT = QColor(148, 163, 184)
+CHART_LABEL_BG = QColor(18, 25, 32)  # 섹션 바탕(#121920) — 막대 위 라벨 뒤

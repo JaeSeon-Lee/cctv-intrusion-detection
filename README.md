@@ -31,12 +31,45 @@ python -m cctv_intrusion              # 또는 cctv-intrusion
 
 ### CCTV 모니터
 
-상단 탭: **CCTV** / **기록**(준비 중)
+상단 탭: **CCTV** / **다시보기**
 
-- **CCTV**: 2×2 화면. CAM 1은 웹캠 자동 연결, CAM 2~4는 좌측 `data/cctv` 목록에서 영상을 골라 재생한다.
-  - 화면을 클릭해 선택한 뒤 파일을 누르면 그 화면에 할당된다.
+- **CCTV**: 2×2 화면. 시작 시 CAM 1은 웹캠, CAM 2~4는 `data/cctv/camN.mp4` 가 있으면 자동 재생.
+  - 화면을 클릭해 선택한 뒤 좌측 목록에서 파일을 누르면 그 화면에 할당된다.
   - 위험구역은 **화면 단위**로 `data/cctv/screens/screen_N.json` 에 저장된다 (영상을 바꿔도 유지).
-- 침입 사건: 파일 화면은 `data/output/{영상이름}.csv` / `{영상이름}_N.mp4`, 웹캠은 `live_YYYYmmdd_HHMMSS.*`.
+- 상시 녹화·침입 클립·CSV 는 캠별 폴더 `data/recordings/camN/` 에 저장된다.
+  - 상시 녹화: `{YYYYmmdd_HHMMSS}.ts` (화면 오버레이 포함)
+  - 침입 클립: `live_YYYYmmdd_HHMMSS.mp4` — 상시 `.ts` 에서 경보 전 3초~해제 후 5초를 잘라 저장  
+    (웹캠·파일 캠 동일. 해제 후 5초 안 재경보면 **같은 구간을 늘려** 한 파일로 자름)
+  - 사건 CSV: `events.csv` (경보가 **해제될 때** 한 줄 추가)
+- **다시보기**: 좌측에서 상시 녹화(`.ts`) 또는 침입 클립(`.mp4`)을 골라 재생한다.
+  - 상시 녹화(`.ts`)를 선택하면 **[대시보드]** 버튼이 활성화된다 (폴더·침입 클립 선택 시 비활성).
+  - 대시보드는 `events.csv` 중 그 녹화(`source_file`)의 행으로 녹화 길이 대비 침입 비율(%, 겹친 구간은 한 번만),
+    침입 횟수, 평균·최장 지속 시간, 녹화 타임라인, 침입별 지속 시간 막대 그래프, 사건 표를 보여준다.
+  - `source_*` 컬럼이 없는 예전 기록은 어느 녹화인지 알 수 없어 집계에서 빠진다.
+
+앱을 **종료한 뒤 다시 실행**할 때는 `data/recordings/` 아래 `cam1`~`cam4` 폴더를 지우는 것을 권장한다.  
+상시 `.ts`가 계속 쌓이므로, 데모·테스트 전에 비우면 용량·다시보기 목록이 깔끔하다.
+
+```bash
+# 예: recordings 캠 폴더만 삭제 (앱이 꺼진 상태에서)
+rm -rf data/recordings/cam1 data/recordings/cam2 data/recordings/cam3 data/recordings/cam4
+```
+
+#### 침입 사건 CSV (`data/recordings/camN/events.csv`)
+
+| 컬럼 | 설명 |
+|---|---|
+| `alarm_at` | 경보 확정 시각 (침입 클립 기준, `MM:SS.mmm`) |
+| `cleared_at` | 경보 해제 시각 |
+| `duration_sec` | 경보~해제 지속 시간(초) |
+| `clip_start` | 클립 시작 = `alarm_at` − 3초 |
+| `clip_end` | 클립 끝 = `cleared_at` + 5초 |
+| `clip_file` | 같은 폴더의 침입 클립 파일명 |
+| `zone_name` | 침입한 위험구역 이름 |
+| `zone_level` | 구역 등급 (`detect` / `caution` / `danger`) |
+| `source_file` | 클립을 자른 상시 녹화 파일명 (`{YYYYmmdd_HHMMSS}.ts`) |
+| `source_alarm_at` | 상시 녹화 파일 기준 경보 시각 (대시보드용) |
+| `source_cleared_at` | 상시 녹화 파일 기준 해제 시각 |
 
 macOS 는 처음 연결할 때 터미널(또는 IDE)에 카메라 권한을 허용해야 한다. WSL2 는 기본 설정으로는 웹캠을 쓸 수 없다.
 
@@ -59,7 +92,7 @@ CUDA 버전이 다르면 [PyTorch 설치 페이지](https://pytorch.org/get-star
 
 ```
 ├── pyproject.toml / requirements.txt / environment.yml
-├── data/cctv · data/cctv/screens · data/output
+├── data/cctv · data/cctv/screens · data/recordings/camN
 ├── models/                     # YOLO 가중치 (자동 다운로드)
 ├── src/cctv_intrusion/
 │   ├── app.py / __main__.py    # 진입점
