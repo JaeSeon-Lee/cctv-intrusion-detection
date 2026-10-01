@@ -14,7 +14,12 @@ POINT_RADIUS = 5
 STATUS_MARGIN = 12
 STATUS_PAD_X = 14
 STATUS_PAD_Y = 8
-ALARM_FRAME_WIDTH = 8
+# 선 두께 (기존 대비 YOLO·구역 ≈2/3, 경보 테두리 ≈1/2)
+PERSON_BOX_WIDTH = 1.5
+ZONE_EDGE_WIDTH = 1.5
+ZONE_SELECTED_WIDTH = 2.5
+ALARM_FRAME_WIDTH = 2
+ALARM_WASH_ALPHA = 18
 
 
 def to_view_polygon(points: list[tuple[float, float]], scale: float) -> QPolygonF:
@@ -38,9 +43,16 @@ def draw_zone_name(painter: QPainter, name: str, polygon: QPolygonF, color: QCol
 
 
 def draw_alarm_frame(pixmap: QPixmap) -> None:
-    """경보 중 영상 테두리를 빨간색으로 그린다."""
+    """경보 중 빨간 반투명 덮개 + 얇은 테두리로 가시성을 높인다."""
     painter = QPainter(pixmap)
     painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+    wash = QColor(colors.ALARM_FRAME)
+    wash.setAlpha(ALARM_WASH_ALPHA)
+    painter.setPen(Qt.PenStyle.NoPen)
+    painter.setBrush(wash)
+    painter.drawRect(QRectF(0, 0, pixmap.width(), pixmap.height()))
+
     pen = QPen(colors.ALARM_FRAME, ALARM_FRAME_WIDTH)
     pen.setJoinStyle(Qt.PenJoinStyle.MiterJoin)
     painter.setPen(pen)
@@ -77,8 +89,13 @@ def draw_monitor_state(pixmap: QPixmap, state: MonitorState) -> None:
     y = STATUS_MARGIN
     rect = QRectF(x, y, box_w, box_h)
 
-    painter.setPen(Qt.PenStyle.NoPen)
-    painter.setBrush(bg)
+    if state == MonitorState.ALARM:
+        # 경보 배지: 더 진한 빨강 + 흰 테두리로 눈에 띄게
+        painter.setPen(QPen(QColor(255, 255, 255), 2))
+        painter.setBrush(colors.ALARM_BADGE)
+    else:
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(bg)
     painter.drawRoundedRect(rect, 8, 8)
     painter.setPen(colors.MONITOR_STATE_TEXT)
     painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, text)
@@ -103,7 +120,7 @@ def draw_zones(
         polygon = to_view_polygon(zone.points, scale)
 
         edge = colors.ZONE_SELECTED if selected else color
-        painter.setPen(QPen(edge, 4 if selected else 2))
+        painter.setPen(QPen(edge, ZONE_SELECTED_WIDTH if selected else ZONE_EDGE_WIDTH))
         fill = QColor(color)
         fill.setAlpha(120 if selected else 55)
         painter.setBrush(fill)
@@ -114,11 +131,11 @@ def draw_zones(
 
     if drawing and drawing_points:
         points = to_view_polygon(drawing_points, scale)
-        painter.setPen(QPen(colors.ZONE_DRAWING, 2))
+        painter.setPen(QPen(colors.ZONE_DRAWING, ZONE_EDGE_WIDTH))
         painter.setBrush(Qt.BrushStyle.NoBrush)
         painter.drawPolyline(points)
         if len(points) >= 3:
-            painter.setPen(QPen(colors.ZONE_DRAWING, 2, Qt.PenStyle.DashLine))
+            painter.setPen(QPen(colors.ZONE_DRAWING, ZONE_EDGE_WIDTH, Qt.PenStyle.DashLine))
             painter.drawLine(points[len(points) - 1], points[0])
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(colors.ZONE_DRAWING)
@@ -133,7 +150,7 @@ def draw_detections(pixmap: QPixmap, detections: list[Detection], scale: float) 
         return
     painter = QPainter(pixmap)
     painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-    painter.setPen(QPen(colors.PERSON_BOX, 2))
+    painter.setPen(QPen(colors.PERSON_BOX, PERSON_BOX_WIDTH))
     painter.setBrush(Qt.BrushStyle.NoBrush)
     for detection in detections:
         painter.drawRect(

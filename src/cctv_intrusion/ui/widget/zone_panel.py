@@ -87,11 +87,16 @@ class ZonePanel(QWidget):
         self.apply_edit_button = QPushButton("수정 적용")
         self.apply_edit_button.setObjectName("apply")
 
-        self.edit_hint = QLabel("목록에서 구역을 선택한 뒤 이름·등급을 바꾸고 [수정 적용]을 누르세요")
+        self.delete_button = QPushButton("구역 삭제")
+        self.delete_button.setObjectName("delete")
+
+        self.edit_hint = QLabel(
+            "목록에서 구역을 선택한 뒤 이름·등급을 바꾸고 [수정 적용]을 누르거나, [구역 삭제]로 지울 수 있습니다"
+        )
         self.edit_hint.setObjectName("hint")
         self.edit_hint.setWordWrap(True)
 
-        hint = QLabel("Delete로 선택 구역 삭제 · Esc 또는 빈 곳 클릭으로 선택 해제")
+        hint = QLabel("Delete 키로도 선택 구역 삭제 · Esc 또는 빈 곳 클릭으로 선택 해제")
         hint.setWordWrap(True)
         hint.setObjectName("hint")
 
@@ -103,6 +108,7 @@ class ZonePanel(QWidget):
             self.default_level_combo,
             self.edit_level_combo,
             self.apply_edit_button,
+            self.delete_button,
         ):
             widget.setFocusPolicy(Qt.FocusPolicy.NoFocus)
 
@@ -124,6 +130,11 @@ class ZonePanel(QWidget):
         draw_buttons.addWidget(self.apply_button)
         draw_buttons.addWidget(self.cancel_button)
 
+        edit_buttons = QHBoxLayout()
+        edit_buttons.setSpacing(8)
+        edit_buttons.addWidget(self.apply_edit_button)
+        edit_buttons.addWidget(self.delete_button)
+
         layout = QVBoxLayout()
         layout.setContentsMargins(14, 14, 14, 14)
         layout.setSpacing(10)
@@ -138,13 +149,14 @@ class ZonePanel(QWidget):
         layout.addWidget(edit_caption)
         layout.addWidget(self.name_edit)
         layout.addWidget(self.edit_level_combo)
-        layout.addWidget(self.apply_edit_button)
+        layout.addLayout(edit_buttons)
         layout.addWidget(self.edit_hint)
         layout.addWidget(hint)
         self.setLayout(layout)
 
         self.list.itemSelectionChanged.connect(self.on_selection_changed)
         self.apply_edit_button.clicked.connect(self.apply_selected_edit)
+        self.delete_button.clicked.connect(self.delete_selected_zone)
         self.name_edit.returnPressed.connect(self.apply_selected_edit)
         QShortcut(QKeySequence(Qt.Key.Key_Delete), self).activated.connect(self.on_delete_key)
         QShortcut(QKeySequence(Qt.Key.Key_Escape), self).activated.connect(self.list.clearSelection)
@@ -197,6 +209,7 @@ class ZonePanel(QWidget):
         self.name_edit.setEnabled(can_edit)
         self.edit_level_combo.setEnabled(can_edit)
         self.apply_edit_button.setEnabled(can_edit)
+        self.delete_button.setEnabled(can_edit)
 
         if not can_edit:
             self._syncing_edit = True
@@ -284,9 +297,15 @@ class ZonePanel(QWidget):
         rows = [index.row() for index in self.list.selectedIndexes()]
         return rows[0] if rows else -1
 
+    def delete_selected_zone(self) -> None:
+        """선택 중인 위험구역을 삭제한다."""
+        if self._drawing:
+            return
+        if self.list.isEnabled() and self.selected_index() >= 0:
+            self.remove_zone(self.selected_index())
+
     def on_delete_key(self) -> None:
         # 이름 입력 중이면 글자 삭제가 우선이므로 포커스가 리스트/패널에 있을 때만 구역 삭제
         if self.name_edit.hasFocus():
             return
-        if self.list.isEnabled() and self.selected_index() >= 0:
-            self.remove_zone(self.selected_index())
+        self.delete_selected_zone()

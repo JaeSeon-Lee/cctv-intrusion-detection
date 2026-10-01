@@ -14,11 +14,15 @@ from cctv_intrusion.intrusion.criteria import MonitorState
 from cctv_intrusion.zone import Zone
 from cctv_intrusion.zone.levels import get_level
 
-ALARM_FRAME_WIDTH = 8
+ALARM_FRAME_WIDTH = 2
 STATUS_MARGIN = 12
 STATUS_PAD_X = 10
 STATUS_PAD_Y = 8
 ZONE_FILL_ALPHA = 0.25
+ALARM_WASH_ALPHA = 0.06
+PERSON_BOX_WIDTH = 1
+ZONE_EDGE_WIDTH = 1
+ZONE_SELECTED_WIDTH = 2
 
 # BGR — ui.styles.colors 와 맞춤 (video→ui 순환 import 방지)
 _ZONE_LEVEL_BGR = {
@@ -31,11 +35,12 @@ _ZONE_LEVEL_BGR = {
 }
 _ZONE_SELECTED_BGR = (36, 191, 251)
 _PERSON_BOX_BGR = (129, 185, 16)
-_ALARM_FRAME_BGR = (38, 38, 220)
+_ALARM_FRAME_BGR = (68, 68, 239)  # 밝은 경보 빨강
+_ALARM_BADGE_BGR = (28, 28, 185)
 _MONITOR_STATE_BGR = {
     "idle": (139, 116, 100),
     "armed": (110, 118, 15),
-    "alarm": (38, 38, 220),
+    "alarm": (68, 68, 239),
     "cleared": (6, 119, 217),
 }
 
@@ -86,7 +91,14 @@ def _draw_zones(frame: np.ndarray, zones: list[Zone], *, selected_index: int) ->
         bgr = _zone_bgr(zone.level)
         pts = np.array(zone.points, dtype=np.int32)
         edge = _ZONE_SELECTED_BGR if selected else bgr
-        cv2.polylines(frame, [pts], True, edge, 4 if selected else 2, cv2.LINE_AA)
+        cv2.polylines(
+            frame,
+            [pts],
+            True,
+            edge,
+            ZONE_SELECTED_WIDTH if selected else ZONE_EDGE_WIDTH,
+            cv2.LINE_AA,
+        )
 
 
 def _draw_detections(frame: np.ndarray, detections: list[Detection]) -> None:
@@ -98,7 +110,7 @@ def _draw_detections(frame: np.ndarray, detections: list[Detection]) -> None:
             (int(detection.x1), int(detection.y1)),
             (int(detection.x2), int(detection.y2)),
             _PERSON_BOX_BGR,
-            2,
+            PERSON_BOX_WIDTH,
             cv2.LINE_AA,
         )
 
@@ -106,7 +118,10 @@ def _draw_detections(frame: np.ndarray, detections: list[Detection]) -> None:
 def _draw_monitor_state(frame: np.ndarray, state: MonitorState) -> None:
     height, width = frame.shape[:2]
     if state == MonitorState.ALARM:
-        inset = ALARM_FRAME_WIDTH // 2
+        wash = frame.copy()
+        wash[:] = _ALARM_FRAME_BGR
+        cv2.addWeighted(wash, ALARM_WASH_ALPHA, frame, 1.0 - ALARM_WASH_ALPHA, 0, frame)
+        inset = max(1, ALARM_FRAME_WIDTH // 2)
         cv2.rectangle(
             frame,
             (inset, inset),
@@ -118,7 +133,11 @@ def _draw_monitor_state(frame: np.ndarray, state: MonitorState) -> None:
 
     label = _STATE_ASCII.get(state, str(state))
     text = f"STATUS  {label}"
-    bg_bgr = _MONITOR_STATE_BGR.get(state.value, _MONITOR_STATE_BGR["idle"])
+    bg_bgr = (
+        _ALARM_BADGE_BGR
+        if state == MonitorState.ALARM
+        else _MONITOR_STATE_BGR.get(state.value, _MONITOR_STATE_BGR["idle"])
+    )
     font = cv2.FONT_HERSHEY_SIMPLEX
     scale = 0.6
     thickness = 2
@@ -130,6 +149,8 @@ def _draw_monitor_state(frame: np.ndarray, state: MonitorState) -> None:
     x2 = x1 + box_w
     y2 = y1 + box_h
     cv2.rectangle(frame, (x1, y1), (x2, y2), bg_bgr, -1)
+    if state == MonitorState.ALARM:
+        cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 255, 255), 2, cv2.LINE_AA)
     cv2.putText(
         frame,
         text,

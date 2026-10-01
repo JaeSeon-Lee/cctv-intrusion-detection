@@ -18,13 +18,14 @@ ZONE_SELECTED = QColor(251, 191, 36)
 ZONE_DRAWING = QColor(14, 165, 233)
 ZONE_NAME_TEXT = QColor(255, 255, 255)
 PERSON_BOX = QColor(16, 185, 129)
-ALARM_FRAME = QColor(220, 38, 38)
+ALARM_FRAME = QColor(239, 68, 68)  # 경보 테두리·덮개 (조금 더 밝은 빨강)
+ALARM_BADGE = QColor(185, 28, 28)  # 경보 상태 배지
 
 # 영상 우측 상단 경보 상태 배지
 MONITOR_STATE_COLORS = {
     "idle": QColor(100, 116, 139),  # 대기
     "armed": QColor(15, 118, 110),  # 감지
-    "alarm": QColor(220, 38, 38),  # 경보
+    "alarm": QColor(239, 68, 68),  # 경보
     "cleared": QColor(217, 119, 6),  # 해제
 }
 MONITOR_STATE_TEXT = QColor(255, 255, 255)

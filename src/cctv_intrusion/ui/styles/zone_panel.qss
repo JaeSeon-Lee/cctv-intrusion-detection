@@ -45,6 +45,30 @@ QPushButton#cancel {
     border-color: #334155;
 }
 
+QPushButton#delete {
+    background-color: #7f1d1d;
+    border-color: #991b1b;
+    color: #fecaca;
+}
+
+QPushButton#delete:hover {
+    background-color: #991b1b;
+    border-color: #b91c1c;
+    color: #ffffff;
+}
+
+QPushButton#delete:pressed {
+    background-color: #450a0a;
+    border-color: #7f1d1d;
+    color: #fecaca;
+}
+
+QPushButton#delete:disabled {
+    background-color: #1e293b;
+    border-color: #334155;
+    color: #64748b;
+}
+
 QLabel#editLabel {
     font-size: 12px;
     line-height: 1.4;
